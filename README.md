@@ -1,5 +1,7 @@
 # Meta_workflow
 
+Codex and human contributors should read `AGENTS.md` first. It is the root operating contract for this repository, including the Pro Bridge handoff rules.
+
 Meta_workflow is a meta workflow engine workspace: it is meant to build, run, check, and improve workflows for arbitrary projects.
 
 The first extracted subsystem is `integrations/pro_bridge`, a guarded interface for using an external ChatGPT Pro project as an outside expert. Pro feedback is treated as evidence and advice only; local gates decide whether it changes workflow rules, memory, or acceptance status.
@@ -17,3 +19,7 @@ node integrations/pro_bridge/tools/pro_chat_monitor.mjs validate-prompt --config
 ```
 
 Runtime captures, locks, local registries, and Pro responses stay under `integrations/pro_bridge/runtime/` and are intentionally not committed.
+
+## References
+
+- `references/papers/s41467-025-63804-5.pdf`: MAP paper used as the initial methodology reference for modular planning, memory-aware orchestration, and workflow-engine architecture.
