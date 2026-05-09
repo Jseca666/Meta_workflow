@@ -1,0 +1,18 @@
+schema: meta_workflow.task_record.high_risk_pro.v1
+task_id: ""
+run_id: ""
+risk_level: high
+reason: external_pro_review_or_workflow_rule_change
+source_ref: ""
+pro_project_id: PUT_PRO_PROJECT_ID_HERE
+pro_session_key: session_1
+prompt_path: ""
+response_path: ""
+required_gates:
+  - source_ref_provenance
+  - prompt_integrity
+  - browser_window_lock
+  - response_schema_validation
+  - external_feedback_absorption
+  - local_decision_gate
+status: draft

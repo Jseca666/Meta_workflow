@@ -1,0 +1,43 @@
+schema: meta_workflow.pro_bridge.session_gate.v1
+
+pro_project:
+  project_id: PUT_PRO_PROJECT_ID_HERE
+  project_url: https://chatgpt.com/g/PUT_PRO_PROJECT_ID_HERE/project
+  source_repo: https://github.com/Jseca666/Meta_workflow
+
+runtime_state:
+  registry_path: integrations/pro_bridge/runtime/registries/pro_project_sessions.jsonl
+  test_registry_path: integrations/pro_bridge/runtime/registries/pro_test_sessions.jsonl
+  event_ledger_path: integrations/pro_bridge/runtime/registries/pro_session_events.jsonl
+  current_formal_session_key: session_1
+
+hard_gates:
+  single_issue_pause:
+    rule: Any blocking Pro/tool/workflow defect pauses the next Pro send until recorded and routed.
+    protocol: integrations/pro_bridge/protocols/single_issue_pause_gate.md
+  source_ref:
+    rule: Formal review prompts require a fixed GitHub commit/ref or an explicit block reason.
+    protocol: integrations/pro_bridge/protocols/source_ref_provenance.md
+  prompt_integrity:
+    rule: validate-prompt must pass before fill or guarded send.
+  browser_window_lock:
+    rule: fill/watch/capture/send require an unexpired exact target lock.
+  guarded_send:
+    rule: Allowed only when sendPolicy, nonce, target lock, prompt hash, and visible input hash all match.
+
+counting_policy:
+  count_only_when_all_true:
+    - prompt_was_sent_to_the_same_project_conversation
+    - capture_has_high_confidence_completion
+    - validate-response returned schema_valid
+    - external_feedback_intake was written
+    - local decision gate recorded adoption_decision
+
+local_only_fields:
+  - profileId
+  - expectedConversationId
+  - sendAuthorizationNonce
+  - responsePath
+  - browserWindowLock.expectedTargetId
+
+long_protocol: integrations/pro_bridge/protocols/pro_review_handoff.md

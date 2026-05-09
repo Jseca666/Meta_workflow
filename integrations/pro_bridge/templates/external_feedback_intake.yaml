@@ -1,0 +1,18 @@
+schema: meta_workflow.external_feedback_intake.v1
+intake_id: ""
+run_id: ""
+source:
+  kind: pro
+  pro_session_key: ""
+  prompt_path: ""
+  prompt_hash: ""
+  response_path: ""
+  response_hash: ""
+validation:
+  pro_response_formal_status: ""
+  pro_response_schema_status: ""
+  confidence_percent: null
+findings: []
+adoption_decision: pending
+memory_writeback: none
+created_at: ""

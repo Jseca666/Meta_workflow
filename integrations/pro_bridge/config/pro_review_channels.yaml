@@ -1,0 +1,42 @@
+schema: meta_workflow.pro_bridge.channels.v1
+
+default_public_repo_url: https://github.com/Jseca666/Meta_workflow
+default_mode: browser_window_visible_automation
+
+channels:
+  github_source_ref:
+    status: preferred
+    description: Fixed public commit/ref used by Pro to inspect source files.
+    required_fields:
+      - source_repo
+      - source_ref
+      - source_paths
+  local_evidence_package:
+    status: supported
+    description: Local manifest for logs, run summaries, validation output, and non-source evidence.
+  browser_window_visible_automation:
+    status: supported
+    description: CDP/BitBrowser-controlled visible browser window automation.
+    restrictions:
+      - User prepares the target Pro window.
+      - Tool may fill prompts only after target lock.
+      - Tool does not send unless guarded send is explicitly authorized for the run.
+      - Captures are accepted only after observable completion gates pass.
+  manual_copy_paste:
+    status: supported
+    description: User manually pastes the prompt and response; Pro Bridge still validates and absorbs the result.
+  github_issue_relay:
+    status: deprecated
+    description: Do not relay Pro requests through GitHub Issues by default.
+
+review_statuses:
+  - draft_prompt
+  - prompt_validated
+  - target_locked
+  - filled_waiting_user_send
+  - guarded_send_completed
+  - capture_completed
+  - response_schema_valid
+  - intake_recorded
+  - decision_recorded
+  - blocked

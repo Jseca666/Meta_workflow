@@ -1,0 +1,94 @@
+{
+  "apiBase": "http://127.0.0.1:54345",
+  "profileId": "PUT_BROWSER_PROFILE_ID_HERE",
+  "chatUrlPattern": "chatgpt\\.com|chat\\.openai\\.com",
+  "promptPath": "integrations/pro_bridge/examples/PROMPT_TO_PRO.sample.md",
+  "responsePath": "integrations/pro_bridge/examples/PRO_RESPONSE.sample.md",
+  "sendPolicy": "manual_only",
+  "sendAuthorizationNonce": "",
+  "responseWaitMode": "state_based_completion",
+  "promptIntegrityMode": "strict",
+  "requiredPromptSubstrings": [
+    "source_repo:",
+    "source_ref:",
+    "source_paths:",
+    "review_goal:",
+    "expected_output_schema:",
+    "local_evidence_manifest:",
+    "PRO_RESPONSE:",
+    "confidence_percent:",
+    "is_100_percent_confident:"
+  ],
+  "endMarker": "PRO_RESPONSE_END",
+  "monitorStatusPath": "integrations/pro_bridge/runtime/PRO_MONITOR_STATUS.json",
+  "projectId": "PUT_PRO_PROJECT_ID_HERE",
+  "projectUrl": "https://chatgpt.com/g/PUT_PRO_PROJECT_ID_HERE/project",
+  "currentFormalSessionKey": "session_1",
+  "testSessionRegistryPath": "integrations/pro_bridge/runtime/registries/pro_test_sessions.jsonl",
+  "expectedConversationId": "",
+  "projectSessionMode": "formal",
+  "requireProjectSessionStatus": true,
+  "sessionRegistryPath": "integrations/pro_bridge/runtime/registries/pro_project_sessions.jsonl",
+  "projectSessionStatusPath": "integrations/pro_bridge/runtime/PROJECT_SESSION_STATUS.json",
+  "browserWindowLock": {
+    "source": "user_provided",
+    "scope": "visible_window_identification_only",
+    "ref": "",
+    "lockPath": "integrations/pro_bridge/runtime/BROWSER_WINDOW_LOCK.json",
+    "expectedTargetId": "",
+    "expectedTitlePattern": "",
+    "expectedUrlPattern": "",
+    "expectedProcessId": "",
+    "expiresMs": 120000
+  },
+  "pollMs": 240000,
+  "networkIdleMs": 15000,
+  "domIdleMs": 30000,
+  "uiStablePolls": 3,
+  "timeoutMs": 0,
+  "inputSelectors": [
+    "#prompt-textarea[contenteditable=\"true\"]",
+    "div#prompt-textarea.ProseMirror",
+    "[contenteditable=\"true\"][role=\"textbox\"]",
+    "[role=\"textbox\"]",
+    "textarea"
+  ],
+  "inputRejectSelectors": [
+    ".ait-notepad-editor"
+  ],
+  "assistantResponseSelectors": [
+    "[data-message-author-role=\"assistant\"]",
+    "[data-testid*=\"assistant\"]",
+    "[class*=\"assistant\"]",
+    "[role=\"article\"]",
+    "article",
+    ".markdown",
+    ".prose"
+  ],
+  "stopGeneratingButtonTexts": [
+    "stop generating",
+    "stop"
+  ],
+  "sendButtonTexts": [
+    "send"
+  ],
+  "doneButtonTexts": [
+    "regenerate",
+    "copy"
+  ],
+  "trackedNetworkUrlPatterns": [
+    "chatgpt\\.com",
+    "chat\\.openai\\.com",
+    "openai\\.com",
+    "/backend-api/",
+    "/conversation",
+    "/responses"
+  ],
+  "trackedNetworkResourceTypes": [
+    "Fetch",
+    "XHR",
+    "EventSource",
+    "WebSocket",
+    "Document"
+  ]
+}

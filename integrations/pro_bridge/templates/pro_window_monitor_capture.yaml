@@ -1,0 +1,27 @@
+schema: meta_workflow.pro_bridge.window_capture.v1
+run_id: ""
+source_repo: https://github.com/Jseca666/Meta_workflow
+source_ref: ""
+pro_project_id: PUT_PRO_PROJECT_ID_HERE
+pro_project_url: https://chatgpt.com/g/PUT_PRO_PROJECT_ID_HERE/project
+pro_session_key: session_1
+prompt_path: ""
+prompt_hash: ""
+response_path: ""
+response_hash: ""
+browser_window_lock:
+  lock_path: integrations/pro_bridge/runtime/BROWSER_WINDOW_LOCK.json
+  target_id: ""
+  expected_url_pattern: ""
+  expires_at: ""
+completion:
+  status: pending
+  signal: ""
+  captured_at: ""
+validation:
+  prompt_integrity_status: ""
+  pro_response_schema_status: ""
+notes:
+  - User prepares the target Pro browser window.
+  - Pro Bridge automates only visible UI actions in that window.
+  - Guarded send requires explicit per-run authorization.
