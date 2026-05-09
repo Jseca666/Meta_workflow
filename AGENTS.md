@@ -1,65 +1,42 @@
 # AGENTS.md
 
-This is the root operating contract for Codex in Meta_workflow. Read it before `README.md` when working in this repository.
+Root entry contract for Codex in Meta_workflow. Keep this file light: it routes agents to the right subsystem docs and records hard boundaries only.
 
-## Project Goal
+## Project
 
-Meta_workflow is a meta workflow engine project. Its goal is to guide the construction of business workflows for arbitrary projects, then evolve into a complete workflow engine with planning, execution, validation, memory, recall, and external expert review.
+Meta_workflow is a meta workflow engine for guiding arbitrary projects through business workflow design, execution, validation, memory, recall, and evolution.
 
-The guiding methodology is MAP-style modular planning from the paper `references/papers/s41467-025-63804-5.pdf`: decompose goals, propose actions, monitor constraints, predict consequences, evaluate states, orchestrate progress, and write back verified memory.
+## Read First
 
-## Codex Work Loop
+1. `README.md` for repository map and current focus.
+2. `docs/architecture/vision.md` for product direction and engine shape.
+3. `docs/methodology/map_methodology.md` for the MAP paper methodology used by this project.
+4. `integrations/pro_bridge/README.md` before any Pro/external expert work.
 
-Use this loop for substantial work:
+## Routing
 
-1. Understand the user goal and current repository state.
-2. Gather evidence from source files, runtime records, papers, and prior decisions.
-3. Produce or update a fixed GitHub `source_ref` for any external review.
-4. If Pro review is needed, route it through Pro Bridge.
-5. Treat Pro output as external advice.
-6. Validate and absorb findings locally before changing rules, memory, architecture, or acceptance status.
+- Pro review or external expert handoff: use `integrations/pro_bridge/`.
+- First architecture review with Pro: use `docs/pro_handoffs/first_architecture_review.md`.
+- Methodology questions about the paper: use `docs/methodology/map_methodology.md` and `references/papers/s41467-025-63804-5.pdf`.
+- Architecture planning: update docs under `docs/architecture/`.
+- Runtime state, captures, local configs, and local registries stay out of Git.
 
-## Pro Bridge Is Mandatory
+## Hard Boundaries
 
-All Pro interaction in this repository must go through `integrations/pro_bridge`.
-
-Read these files before preparing a Pro handoff:
-
-- `integrations/pro_bridge/README.md`
-- `integrations/pro_bridge/protocols/pro_review_handoff.md`
-- `integrations/pro_bridge/protocols/external_feedback_absorption.md`
-- `integrations/pro_bridge/protocols/source_ref_provenance.md`
-
-The normal Pro path is:
-
-`prepare evidence -> build prompt -> validate-prompt -> project-sessions -> targets/lock -> fill or manual paste -> capture -> validate-response -> external_feedback_intake -> local decision/memory writeback`
-
-## GitHub Source Ref Rule
-
-Pro should read project materials through GitHub whenever possible. Prompts to Pro must include:
-
-- `source_repo`: `https://github.com/Jseca666/Meta_workflow`
-- `source_ref`: a fixed commit URL such as `https://github.com/Jseca666/Meta_workflow/tree/<commit-sha>`
-- `source_paths`: exact files or folders to inspect
-- `review_goal`
-- `expected_output_schema`
-- `local_evidence_manifest`
-
-Do not ask Pro to infer from "latest local files" or unstaged work. If the fixed ref is unavailable, state the block reason and mark the review as draft-only.
-
-## Current First Pro Review Materials
-
-The first Pro review should ask Pro to:
-
-- read `references/papers/s41467-025-63804-5.pdf`
-- understand MAP's modules and planning methodology
-- understand that Meta_workflow aims to become a workflow engine for building project-specific business workflows
-- propose a first complete project architecture for Meta_workflow
-
-## Non-Negotiable Boundaries
-
-- Pro is an external expert, not the source of truth.
-- Pro responses cannot directly change workflow rules, long-term memory, business direction, task status, or acceptance status.
+- Pro is external advice, not project truth.
+- Do not let Pro responses directly change rules, memory, architecture, task status, or acceptance status.
 - Do not commit `*.local.json`, `*.local.yaml`, runtime registries, browser locks, raw Pro responses, profile ids, nonces, conversation ids, cookies, or tokens.
 - Do not skip prompt validation, response validation, external feedback intake, or local decision gates.
-- Do not mix Meta_workflow Pro session state with `ikunAim` historical Pro sessions.
+- Do not mix Meta_workflow Pro session state with historical state from other projects.
+
+## Decision Placement
+
+- Put stable architecture direction in `docs/architecture/`.
+- Put research/methodology interpretation in `docs/methodology/`.
+- Put Pro review briefs and outcomes in `docs/pro_handoffs/` or Pro Bridge runtime/intake files as appropriate.
+- Put executable Pro integration behavior in `integrations/pro_bridge/`.
+- Keep `AGENTS.md` as an index and boundary document only.
+
+## Local Work Loop
+
+For substantial work: understand the goal, inspect repo state, gather evidence, plan or implement narrowly, validate, then record any durable decision in the right doc or subsystem.
