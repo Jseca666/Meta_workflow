@@ -2445,10 +2445,10 @@ async function selfTest() {
   try {
     assertFormalLockHintNotFuzzy({
       ...defaultConfig,
-      expectedConversationId: '69fdbba2-f014-83e8-9477-7f1920dba234',
+      expectedConversationId: '11111111-1111-4111-8111-111111111111',
       browserWindowLock: {
         ...defaultConfig.browserWindowLock,
-        expectedUrlPattern: 'chatgpt\\.com/g/PUT_PRO_PROJECT_ID_HERE/c/69fed4a7-9e5c-83e8-b474-ed0bf99e7b50'
+        expectedUrlPattern: 'chatgpt\\.com/g/PUT_PRO_PROJECT_ID_HERE/c/33333333-3333-4333-8333-333333333333'
       }
     });
     throw new Error('assertFormalLockHintNotFuzzy unexpectedly allowed wrong formal conversation id');
@@ -2457,10 +2457,10 @@ async function selfTest() {
   }
   assertFormalLockHintNotFuzzy({
     ...defaultConfig,
-    expectedConversationId: '69fdbba2-f014-83e8-9477-7f1920dba234',
+    expectedConversationId: '11111111-1111-4111-8111-111111111111',
     browserWindowLock: {
       ...defaultConfig.browserWindowLock,
-      expectedUrlPattern: 'chatgpt\\.com/g/PUT_PRO_PROJECT_ID_HERE/c/69fdbba2-f014-83e8-9477-7f1920dba234'
+      expectedUrlPattern: 'chatgpt\\.com/g/PUT_PRO_PROJECT_ID_HERE/c/11111111-1111-4111-8111-111111111111'
     }
   });
   const longPromptWithStopWords = [
@@ -2573,7 +2573,7 @@ PRO_RESPONSE_END`, defaultConfig);
     {
       session_key: 'session_0',
       project_id: defaultConfig.projectId,
-      conversation_id: '69fdbaab-f80c-83e8-8eca-3cf598fe9851',
+      conversation_id: '00000000-0000-4000-8000-000000000000',
       status: 'deleted',
       created_by_pro_bridge: true,
       handoff_count: 0,
@@ -2583,7 +2583,7 @@ PRO_RESPONSE_END`, defaultConfig);
     {
       session_key: 'session_1',
       project_id: defaultConfig.projectId,
-      conversation_id: '69fdbba2-f014-83e8-9477-7f1920dba234',
+      conversation_id: '11111111-1111-4111-8111-111111111111',
       status: 'active',
       created_by_pro_bridge: true,
       handoff_count: 5,
@@ -2597,16 +2597,16 @@ PRO_RESPONSE_END`, defaultConfig);
     projectMatched: true,
     observed_sessions: [
       {
-        conversation_id: '69fdbba2-f014-83e8-9477-7f1920dba234',
-        conversation_url: `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/69fdbba2-f014-83e8-9477-7f1920dba234`,
+        conversation_id: '11111111-1111-4111-8111-111111111111',
+        conversation_url: `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/11111111-1111-4111-8111-111111111111`,
         title_preview: 'Greeting exchange',
         title_hash: sha256('Greeting exchange'),
         title_length: 17,
         current_open: true
       },
       {
-        conversation_id: '69febf41-ae38-83e8-b13f-5f86412d2962',
-        conversation_url: `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/69febf41-ae38-83e8-b13f-5f86412d2962`,
+        conversation_id: '22222222-2222-4222-8222-222222222222',
+        conversation_url: `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/22222222-2222-4222-8222-222222222222`,
         title_preview: 'Test-only observation',
         title_hash: sha256('Test-only observation'),
         title_length: 21,
@@ -2616,13 +2616,13 @@ PRO_RESPONSE_END`, defaultConfig);
   };
   const reconciled = reconcileProjectSessions(defaultConfig, pageState, registry);
   assert('project sessions reconcile active formal session from page and registry', reconciled.status === 'project_sessions_reconciled' && reconciled.active_formal_session_match === true, reconciled);
-  assert('project sessions record unregistered project-local chat without mixing recents', reconciled.unregistered_in_page.length === 1 && reconciled.unregistered_in_page[0].conversation_id === '69febf41-ae38-83e8-b13f-5f86412d2962', reconciled.unregistered_in_page);
+  assert('project sessions record unregistered project-local chat without mixing recents', reconciled.unregistered_in_page.length === 1 && reconciled.unregistered_in_page[0].conversation_id === '22222222-2222-4222-8222-222222222222', reconciled.unregistered_in_page);
   assert('deleted registered session missing from page is not a mismatch', reconciled.missing_in_page.length === 0, reconciled.missing_in_page);
   const missingActive = reconcileProjectSessions(defaultConfig, { ...pageState, observed_sessions: [] }, registry);
   assert('missing active formal session blocks project session gate', missingActive.status === 'blocked_project_session_mismatch' && missingActive.blocked_reasons.includes('active_formal_session_missing_in_project_page'), missingActive);
-  assert('parse project conversation URL extracts conversation id', parseProjectConversationUrl(pageState.observed_sessions[0].conversation_url, defaultConfig.projectId).conversationId === '69fdbba2-f014-83e8-9477-7f1920dba234');
+  assert('parse project conversation URL extracts conversation id', parseProjectConversationUrl(pageState.observed_sessions[0].conversation_url, defaultConfig.projectId).conversationId === '11111111-1111-4111-8111-111111111111');
   try {
-    verifyProjectSessionForUrl(defaultConfig, reconciled, `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/69febf41-ae38-83e8-b13f-5f86412d2962`, 'send');
+    verifyProjectSessionForUrl(defaultConfig, reconciled, `https://chatgpt.com/g/${defaultConfig.projectId}-produi-jie/c/22222222-2222-4222-8222-222222222222`, 'send');
     throw new Error('verifyProjectSessionForUrl unexpectedly allowed wrong conversation');
   } catch (error) {
     assert('formal send blocks wrong project conversation id', error instanceof CliError && error.status === 'blocked_project_session_mismatch');
