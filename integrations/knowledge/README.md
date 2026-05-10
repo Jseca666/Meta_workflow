@@ -40,7 +40,8 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py sec-
 ```
 
 Aliases are accepted for retrievers: `coding-sandbox`, `agentic-rag`, and
-`compiled-artifacts`.
+`compiled-artifacts`. The `coding_sandbox` id is kept for CLI compatibility, but
+reports display it as `coding_sandbox_simulated`.
 
 When SEC network access is unavailable, use already-downloaded Hugging Face SEC
 10-K JSONL shards as a large-corpus mirror:
@@ -67,6 +68,8 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-query --corpus ikunaim_full --file integrations/knowledge/examples/ikunaim_workflow.query.json
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_90 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_adaptive_40 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 40
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_hidden_30 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 30
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-stale-check --corpus ikunaim_full
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-agent-pack --suite ikunaim_90 --corpus ikunaim_full --retriever coding_sandbox,agentic_rag,compiled --composer codex
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-judge-pack --suite ikunaim_90 --corpus ikunaim_full --blind --judge codex
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-analysis --suite ikunaim_90 --corpus ikunaim_full
@@ -75,9 +78,15 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun
 The typed artifacts cover project profile, workflow control, role gate, memory
 system, run history, Pro feedback, and business context. `ikunaim_adaptive_40`
 adds focused prompts for adaptive intake routing, role/domain selection, failure
-recovery, Pro feedback absorption, and memory/boundary decisions. Automatic
-metrics are completion, citation coverage, source-byte proxy, latency, and
-steps; blind judge accuracy is exported/imported separately.
+recovery, Pro feedback absorption, and memory/boundary decisions.
+`ikunaim_hidden_30` adds hand-written cross-boundary, negative/refusal,
+noisy-source, and stale/recovery prompts. Automatic metrics are automatic
+completion, citation coverage, source-byte proxy, latency, and steps; blind
+judge accuracy is exported/imported separately.
+
+Compiled SEC and ikunAim artifacts record `artifact_version`, `status`,
+`source_hashes_json`, and `compiled_at`. Query-time compiled answers warn with
+`stale_artifact:<id>` when source hashes drift.
 
 ## Public KRAFTBench-like Reproduction
 

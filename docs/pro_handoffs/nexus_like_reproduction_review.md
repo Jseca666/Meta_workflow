@@ -16,10 +16,8 @@ through local feedback intake and decision gates.
 ## Source Repo
 
 - Repository: `https://github.com/Jseca666/Meta_workflow`
-- Source ref: draft local working tree.
-- Block reason for fixed source ref: the current reproduction code and report
-  are not committed yet, so Pro should treat this as draft evidence until a
-  commit SHA is provided.
+- Source ref reviewed by Pro: `590eefec824fbd292c5c31bdc918aa64f180dbb5`.
+- Follow-up outcome: `docs/pro_handoffs/nexus_like_reproduction_review_outcome.md`.
 
 ## Source Paths
 
@@ -43,6 +41,7 @@ output, not durable source truth:
 - `integrations/knowledge/runtime/ikunaim_full/comparison_summary.ikunaim_adaptive_40.json`
 - `integrations/knowledge/runtime/ikunaim_full/analysis_report.md`
 - `integrations/knowledge/runtime/ikunaim_full/analysis_report.ikunaim_adaptive_40.md`
+- `integrations/knowledge/runtime/ikunaim_full/analysis_report.ikunaim_hidden_30.md`
 
 ## Local Evidence Manifest
 
@@ -55,7 +54,8 @@ Implemented behavior:
 - Strict JSON response with `answer`, `fields`, `citations`, `confidence`,
   `budget_used`, `filtered_by_acl`, and `warnings`.
 - Three retrieval paths:
-  - `coding_sandbox`: simulated file search/read loop.
+  - `coding_sandbox`: simulated file search/read loop, displayed in reports as
+    `coding_sandbox_simulated`.
   - `agentic_rag`: chunk FTS with expansion/fusion-style retrieval.
   - `compiled`: artifact routing and typed field lookup.
 - Blinded judge pack export exists, but independent judge results are not yet
@@ -66,11 +66,11 @@ SEC HF mirror result:
 - Corpus: 870 filings, 235 latest-company artifacts, 87,237 chunks,
   259.897 MiB normalized text.
 - Suite: `sec_10k_150`.
-- `compiled`: 150/150 completion, 3.746 ms median latency, 325,304 source-byte
+- `compiled`: 150/150 automatic completion, 3.746 ms median latency, 325,304 source-byte
   proxy, 1.000 citation coverage.
-- `agentic_rag`: 23/150 completion, 15.429 ms median latency, 12,995,235
+- `agentic_rag`: 23/150 automatic completion, 15.429 ms median latency, 12,995,235
   source-byte proxy.
-- `coding_sandbox`: 78/150 completion, 6.750 ms median latency, 86,308,997
+- `coding_sandbox_simulated`: 78/150 automatic completion, 6.750 ms median latency, 86,308,997
   source-byte proxy.
 
 ikunAim project corpus result:
@@ -78,28 +78,40 @@ ikunAim project corpus result:
 - Corpus: 1,224 readable sources, 1,917 chunks, 7 typed artifacts,
   3.504 MiB readable text, 264 noisy sources.
 - Suite: `ikunaim_90`.
-- `compiled`: 90/90 completion, 1.317 ms median latency, 134,622 source-byte
+- `compiled`: 90/90 automatic completion, 2.501 ms median latency, 134,622 source-byte
   proxy, 1.000 citation coverage.
-- `agentic_rag`: 16/90 completion, 2.966 ms median latency, 4,452,709
-  source-byte proxy.
-- `coding_sandbox`: 32/90 completion, 53.849 ms median latency, 17,722,034
-  source-byte proxy.
+- `agentic_rag`: 49/90 automatic completion, 4.289 ms median latency, 4,330,960
+  source-byte proxy, 1.000 citation coverage.
+- `coding_sandbox_simulated`: 59/90 automatic completion, 66.069 ms median latency, 17,722,034
+  source-byte proxy, 1.000 citation coverage.
 
 ikunAim adaptive workflow result:
 
 - Suite: `ikunaim_adaptive_40`.
 - Prompt classes: adaptive intake routing, role/domain selection, failure
   recovery, Pro feedback absorption, memory/boundary decisions.
-- `compiled`: 40/40 completion, 1.358 ms median latency, 91,158 source-byte
+- `compiled`: 40/40 automatic completion, 2.835 ms median latency, 91,158 source-byte
   proxy, 1.000 citation coverage.
-- `agentic_rag`: 8/40 completion, 3.001 ms median latency, 2,004,184
-  source-byte proxy.
-- `coding_sandbox`: 2/40 completion, 66.961 ms median latency, 10,467,786
-  source-byte proxy.
+- `agentic_rag`: 26/40 automatic completion, 6.622 ms median latency, 2,072,014
+  source-byte proxy, 1.000 citation coverage.
+- `coding_sandbox_simulated`: 24/40 automatic completion, 80.085 ms median latency, 10,467,786
+  source-byte proxy, 1.000 citation coverage.
+
+ikunAim hidden/adversarial follow-up result:
+
+- Suite: `ikunaim_hidden_30`.
+- Prompt classes: hidden cross-boundary, negative/refusal, noisy source,
+  stale/recovery.
+- `compiled`: 30/30 automatic completion, 2.634 ms median latency, 66,082
+  source-byte proxy, 1.000 citation coverage.
+- `agentic_rag`: 16/30 automatic completion, 5.691 ms median latency,
+  1,573,290 source-byte proxy, 1.000 citation coverage.
+- `coding_sandbox_simulated`: 14/30 automatic completion, 84.430 ms median
+  latency, 8,557,384 source-byte proxy, 1.000 citation coverage.
 
 Validation already run:
 
-- `knowledge.py self-test`: 9/9 passed.
+- `knowledge.py self-test`: 12/12 passed after follow-up hardening.
 - `git diff --check`: passed.
 
 ## Review Goal

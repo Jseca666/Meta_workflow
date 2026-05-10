@@ -44,7 +44,8 @@ KRAFT_PUBLIC_SUITE_NAME = "kraft_public_150"
 KRAFT_PUBLIC_CORPUS_ID = "sec_10k_2022_kraft_public"
 IKUN_SUITE_NAME = "ikunaim_90"
 IKUN_ADAPTIVE_SUITE_NAME = "ikunaim_adaptive_40"
-IKUN_SUITE_NAMES = {IKUN_SUITE_NAME, IKUN_ADAPTIVE_SUITE_NAME}
+IKUN_HIDDEN_SUITE_NAME = "ikunaim_hidden_30"
+IKUN_SUITE_NAMES = {IKUN_SUITE_NAME, IKUN_ADAPTIVE_SUITE_NAME, IKUN_HIDDEN_SUITE_NAME}
 IKUN_CORPUS_ID = "ikunaim_full"
 IKUN_DEFAULT_ROOT = Path(r"C:\Users\dzw\Desktop\ikunAim")
 IKUN_TEXT_EXTENSIONS = {".md", ".yaml", ".yml", ".json", ".jsonl", ".txt", ".csv", ".pdf"}
@@ -70,6 +71,20 @@ IKUN_CONTEXTS = {
     "ikunaim_runs": ["run_history", "workflow_control"],
     "ikunaim_business": ["business_context", "project_profile"],
     "ikunaim_pro": ["pro_feedback", "workflow_control"],
+}
+IKUN_CONTEXT_QUERY_HINTS = {
+    "ikunaim_workflow": ["workflow", "role", "gate", "validation", "stop", "loop"],
+    "ikunaim_memory": ["memory", "writeback", "experience", "strategy"],
+    "ikunaim_runs": ["run", "task", "current_run", "defect", "event", "handoff"],
+    "ikunaim_business": ["business", "scrcpy", "android", "legacy", "reference"],
+    "ikunaim_pro": ["pro", "feedback", "intake", "visible", "audit"],
+}
+RETRIEVER_DISPLAY_NAMES = {
+    "coding_sandbox": "coding_sandbox_simulated",
+    "coding_agent": "coding_agent",
+    "agentic_rag": "agentic_rag",
+    "compiled": "compiled",
+    "baseline": "baseline",
 }
 SEC_RUNTIME_DIR = RUNTIME_DIR / SEC_CORPUS_ID
 SEC_CONFIG_EXAMPLE = KNOWLEDGE_DIR / "config" / "sec_10k_2022.example.json"
@@ -256,6 +271,12 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -377,6 +398,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
           data_json TEXT NOT NULL,
           citations_json TEXT NOT NULL,
           confidence REAL NOT NULL,
+          artifact_version TEXT NOT NULL DEFAULT 'v1',
+          status TEXT NOT NULL DEFAULT 'active',
+          source_hashes_json TEXT NOT NULL DEFAULT '{}',
+          compiled_at TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL,
           FOREIGN KEY(filing_id) REFERENCES sec_filings(id) ON DELETE CASCADE
         );
@@ -421,6 +446,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
           data_json TEXT NOT NULL,
           citations_json TEXT NOT NULL,
           confidence REAL NOT NULL,
+          artifact_version TEXT NOT NULL DEFAULT 'v1',
+          status TEXT NOT NULL DEFAULT 'active',
+          source_hashes_json TEXT NOT NULL DEFAULT '{}',
+          compiled_at TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL
         );
 
@@ -453,6 +482,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
             "CREATE VIRTUAL TABLE IF NOT EXISTS ikun_chunk_fts "
             "USING fts5(chunk_id UNINDEXED, corpus UNINDEXED, rel_path, text)"
         )
+    for table in ["sec_artifacts", "ikun_artifacts"]:
+        ensure_column(conn, table, "artifact_version", "TEXT NOT NULL DEFAULT 'v1'")
+        ensure_column(conn, table, "status", "TEXT NOT NULL DEFAULT 'active'")
+        ensure_column(conn, table, "source_hashes_json", "TEXT NOT NULL DEFAULT '{}'")
+        ensure_column(conn, table, "compiled_at", "TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
@@ -1724,6 +1758,9 @@ def extract_company_artifact(conn: sqlite3.Connection, filing: sqlite3.Row) -> d
         "title": f"{filing['ticker']} 2022 10-K fact sheet",
         "data": data,
         "citations": citations,
+        "source_hashes": sec_artifact_source_hashes(filing),
+        "artifact_version": "v1",
+        "status": "active",
         "confidence": round(confidence, 3),
     }
 
@@ -1768,12 +1805,14 @@ def sec_compile(args: argparse.Namespace) -> dict[str, Any]:
             chunk_count = 0
             for filing in filings:
                 artifact = extract_company_artifact(conn, filing)
+                compiled_at = utc_now()
                 conn.execute(
                     """
                     INSERT INTO sec_artifacts
                       (id, corpus, filing_id, ticker, cik, company, artifact_type, title,
-                       data_json, citations_json, confidence, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       data_json, citations_json, confidence, artifact_version, status,
+                       source_hashes_json, compiled_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         artifact["id"],
@@ -1787,7 +1826,11 @@ def sec_compile(args: argparse.Namespace) -> dict[str, Any]:
                         json_dumps(artifact["data"]),
                         json_dumps(artifact["citations"]),
                         artifact["confidence"],
-                        utc_now(),
+                        artifact.get("artifact_version", "v1"),
+                        artifact.get("status", "active"),
+                        json_dumps(artifact.get("source_hashes", {})),
+                        compiled_at,
+                        compiled_at,
                     ),
                 )
                 artifact_count += 1
@@ -1832,6 +1875,7 @@ def ikun_paths(corpus: str = IKUN_CORPUS_ID) -> dict[str, Path]:
         "judge_answer_key": base / "judge_answer_key.json",
         "judge_results": base / "judge_results.jsonl",
         "judge_summary": base / "judge_summary.json",
+        "stale_report": base / "stale_report.json",
     }
 
 
@@ -2119,6 +2163,9 @@ def ikun_make_artifact(
         "title": title,
         "data": data,
         "citations": citations,
+        "source_hashes": artifact_source_hashes_from_citations(citations),
+        "artifact_version": "v1",
+        "status": "active",
         "confidence": confidence,
     }
 
@@ -2146,6 +2193,63 @@ def ikun_citation_for(
     if row is None:
         row = ikun_first_source(rows)
     return [ikun_citation(row, field, needles, confidence)] if row is not None else []
+
+
+def artifact_source_hashes_from_citations(citations: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for values in citations.values():
+        for citation in values:
+            path = str(citation.get("path", "")).replace("\\", "/")
+            source_hash = str(citation.get("source_hash", ""))
+            if path and source_hash:
+                hashes[path] = source_hash
+    return dict(sorted(hashes.items()))
+
+
+def sec_artifact_source_hashes(filing: sqlite3.Row) -> dict[str, str]:
+    hashes = {str(filing["local_text_path"]).replace("\\", "/"): str(filing["content_hash"])}
+    metadata = row_json(filing, "metadata_json", {})
+    facts_path = str(metadata.get("local_companyfacts_path", "")).strip()
+    if facts_path:
+        path = ROOT_DIR / facts_path
+        if path.exists():
+            hashes[facts_path.replace("\\", "/")] = sha256_text(read_text(path))
+    return dict(sorted(hashes.items()))
+
+
+def make_evidence_citation(
+    path: str,
+    line_start: int,
+    line_end: int,
+    quote: str,
+    field_path: str = "retrieval_evidence",
+    confidence: float = 0.55,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    citation = {
+        "field_path": field_path,
+        "path": path,
+        "line_start": max(1, int(line_start or 1)),
+        "line_end": max(1, int(line_end or line_start or 1)),
+        "quote": re.sub(r"\s+", " ", quote).strip()[:700],
+        "confidence": confidence,
+    }
+    if extra:
+        citation.update(extra)
+    return citation
+
+
+def citation_support_coverage(result: dict[str, Any], expected: dict[str, Any]) -> float:
+    required = expected.get("required_fields", [])
+    citations = result.get("citations") or []
+    if not citations:
+        return 0.0
+    usable = [
+        citation
+        for citation in citations
+        if citation.get("path") and citation.get("quote") and citation.get("line_start")
+    ]
+    return min(1.0, len(usable) / max(1, len(required)))
 
 
 def ikun_clean_or_default(value: str | None, default: str) -> str:
@@ -2382,11 +2486,13 @@ def ikun_compile(args: argparse.Namespace) -> dict[str, Any]:
         with conn:
             conn.execute("DELETE FROM ikun_artifacts WHERE corpus = ?", (args.corpus,))
             for artifact in artifacts:
+                compiled_at = utc_now()
                 conn.execute(
                     """
                     INSERT INTO ikun_artifacts
-                      (id, corpus, context_id, artifact_type, title, data_json, citations_json, confidence, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      (id, corpus, context_id, artifact_type, title, data_json, citations_json,
+                       confidence, artifact_version, status, source_hashes_json, compiled_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         artifact["id"],
@@ -2397,7 +2503,11 @@ def ikun_compile(args: argparse.Namespace) -> dict[str, Any]:
                         json_dumps(artifact["data"]),
                         json_dumps(artifact["citations"]),
                         artifact["confidence"],
-                        utc_now(),
+                        artifact.get("artifact_version", "v1"),
+                        artifact.get("status", "active"),
+                        json_dumps(artifact.get("source_hashes", {})),
+                        compiled_at,
+                        compiled_at,
                     ),
                 )
         artifact_rows = [
@@ -2407,6 +2517,9 @@ def ikun_compile(args: argparse.Namespace) -> dict[str, Any]:
                 "artifact_type": artifact["artifact_type"],
                 "title": artifact["title"],
                 "confidence": artifact["confidence"],
+                "artifact_version": artifact.get("artifact_version", "v1"),
+                "status": artifact.get("status", "active"),
+                "source_hashes": artifact.get("source_hashes", {}),
                 "data": artifact["data"],
                 "citations": artifact["citations"],
             }
@@ -2427,6 +2540,55 @@ def ikun_compile(args: argparse.Namespace) -> dict[str, Any]:
 
 def ikun_artifact_rows(conn: sqlite3.Connection, corpus: str) -> list[sqlite3.Row]:
     return list(conn.execute("SELECT * FROM ikun_artifacts WHERE corpus = ? ORDER BY context_id, artifact_type", (corpus,)))
+
+
+def ikun_artifact_stale_details(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    hashes = row_json(row, "source_hashes_json", {})
+    drift = []
+    for path, expected_hash in sorted(hashes.items()):
+        current = conn.execute(
+            "SELECT content_hash FROM ikun_sources WHERE corpus = ? AND rel_path = ?",
+            (row["corpus"], path),
+        ).fetchone()
+        if current is None:
+            drift.append({"path": path, "status": "missing_source", "expected_hash": expected_hash, "current_hash": None})
+        elif current["content_hash"] != expected_hash:
+            drift.append(
+                {
+                    "path": path,
+                    "status": "hash_changed",
+                    "expected_hash": expected_hash,
+                    "current_hash": current["content_hash"],
+                }
+            )
+    status = row["status"] if "status" in row.keys() else "active"
+    return {
+        "artifact_id": row["id"],
+        "artifact_type": row["artifact_type"],
+        "context_id": row["context_id"],
+        "status": status,
+        "artifact_version": row["artifact_version"] if "artifact_version" in row.keys() else "v1",
+        "compiled_at": row["compiled_at"] if "compiled_at" in row.keys() else row["created_at"],
+        "stale": bool(drift) or status != "active",
+        "source_hash_drift": drift,
+    }
+
+
+def ikun_stale_report(conn: sqlite3.Connection, corpus: str) -> dict[str, Any]:
+    init_schema(conn)
+    artifacts = ikun_artifact_rows(conn, corpus)
+    details = [ikun_artifact_stale_details(conn, row) for row in artifacts]
+    stale = [item for item in details if item["stale"]]
+    affected_contexts = sorted({item["context_id"] for item in stale})
+    return {
+        "status": "ikun_stale_checked",
+        "corpus": corpus,
+        "artifact_count": len(artifacts),
+        "stale_artifact_count": len(stale),
+        "affected_contexts": affected_contexts,
+        "stale_artifacts": stale,
+        "fresh_artifact_count": len(artifacts) - len(stale),
+    }
 
 
 def ikun_select_artifacts(conn: sqlite3.Connection, corpus: str, query: dict[str, Any]) -> tuple[list[sqlite3.Row], list[str]]:
@@ -2588,6 +2750,10 @@ def run_ikun_compiled_query(conn: sqlite3.Connection, query: dict[str, Any], cor
         raise KnowledgeError(f"No ikunAim artifacts for corpus {corpus}. Run ikun-compile first.")
     start = time.perf_counter()
     artifacts, warnings = ikun_select_artifacts(conn, corpus, query)
+    stale_details = [ikun_artifact_stale_details(conn, row) for row in artifacts]
+    stale_ids = [item["artifact_id"] for item in stale_details if item["stale"]]
+    for artifact_id in stale_ids:
+        warnings.append(f"stale_artifact:{artifact_id}")
     shape = query.get("shape") if isinstance(query.get("shape"), dict) else {}
     props = shape.get("properties") if isinstance(shape.get("properties"), dict) else {}
     prefix = ikun_source_prefix_filter(query)
@@ -2640,6 +2806,9 @@ def run_ikun_compiled_query(conn: sqlite3.Connection, query: dict[str, Any], cor
             seen.add(key)
             deduped.append(citation)
     confidence_values = [row["confidence"] for row in artifacts]
+    aggregate_confidence = round(min(confidence_values), 3) if confidence_values else 0.0
+    if stale_ids:
+        aggregate_confidence = round(min(aggregate_confidence, 0.49), 3)
     latency_ms = (time.perf_counter() - start) * 1000.0
     served_payload = {"answer": answer, "citations": deduped}
     return {
@@ -2647,8 +2816,9 @@ def run_ikun_compiled_query(conn: sqlite3.Connection, query: dict[str, Any], cor
         "fields": fields,
         "citations": deduped,
         "confidence": {
-            "aggregate": round(min(confidence_values), 3) if confidence_values else 0.0,
+            "aggregate": aggregate_confidence,
             "selected_artifact_count": len(artifacts),
+            "stale_artifact_count": len(stale_ids),
         },
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
@@ -2678,6 +2848,7 @@ def run_ikun_coding_sandbox_query(conn: sqlite3.Connection, query: dict[str, Any
     scored.sort(key=lambda item: (item[0], -int(item[1]["noisy"]), -int(item[1]["byte_count"])), reverse=True)
     selected = [row for _, row in scored[:10]]
     snippets = []
+    citations = []
     source_bytes = 0
     steps = 0
     for row in selected:
@@ -2692,12 +2863,24 @@ def run_ikun_coding_sandbox_query(conn: sqlite3.Connection, query: dict[str, Any
             if index >= 0:
                 snippet = content[max(0, index - 350) : min(len(content), index + 750)]
                 break
-        snippets.append({"path": row["rel_path"], "snippet": re.sub(r"\s+", " ", snippet).strip()[:1400]})
+        line_start, line_end, quote = find_line_range(content, snippet[:80])
+        clean_snippet = re.sub(r"\s+", " ", snippet).strip()[:1400]
+        snippets.append({"path": row["rel_path"], "line_start": line_start, "line_end": line_end, "snippet": clean_snippet})
+        citations.append(
+            make_evidence_citation(
+                row["rel_path"],
+                line_start,
+                line_end,
+                quote or clean_snippet,
+                confidence=0.5 if row["noisy"] else 0.58,
+                extra={"source_hash": row["content_hash"], "retriever": "coding_sandbox_simulated", "noisy": bool(row["noisy"])},
+            )
+        )
     latency_ms = (time.perf_counter() - start) * 1000.0
     return {
         "answer": {"snippets": snippets},
         "fields": {},
-        "citations": [],
+        "citations": citations,
         "confidence": {"aggregate": 0.0, "selected_artifact_count": 0},
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
@@ -2715,22 +2898,31 @@ def run_ikun_agentic_rag_query(conn: sqlite3.Connection, query: dict[str, Any], 
     start = time.perf_counter()
     terms = ikun_query_terms(query)
     prefix = ikun_source_prefix_filter(query)
-    expansions = [escape_fts_query(terms[:8])]
+    requested_contexts = [str(item) for item in query.get("contexts", []) if str(item) in IKUN_CONTEXT_QUERY_HINTS]
+    context_terms: list[str] = []
+    for context_id in requested_contexts:
+        context_terms.extend(IKUN_CONTEXT_QUERY_HINTS[context_id])
+    expansions = [escape_fts_query((terms + context_terms)[:10])]
     if prefix:
         expansions.append(escape_fts_query(tokenize(prefix.replace("/", " "))))
     if "audit" in query.get("ask", "").lower() or "故障" in query.get("ask", ""):
         expansions.append('"defect" OR "event" OR "ledger" OR "validation" OR "audit"')
     if "business" in query.get("ask", "").lower() or "业务" in query.get("ask", ""):
         expansions.append('"business" OR "scrcpy" OR "Android" OR "AI"')
+    if "ikunaim_pro" in requested_contexts:
+        expansions.append('"Pro" OR "feedback" OR "intake" OR "audit"')
+    if "ikunaim_memory" in requested_contexts:
+        expansions.append('"memory" OR "writeback" OR "experience"')
     scored: dict[str, tuple[float, sqlite3.Row, str]] = {}
     for ranker, fts_query in enumerate(expansions):
         try:
             rows = list(
                 conn.execute(
                     """
-                    SELECT c.*, snippet(ikun_chunk_fts, 3, '[', ']', ' ... ', 32) AS snippet
+                    SELECT c.*, s.noisy, s.content_hash, snippet(ikun_chunk_fts, 3, '[', ']', ' ... ', 32) AS snippet
                     FROM ikun_chunk_fts
                     JOIN ikun_chunks c ON c.id = ikun_chunk_fts.chunk_id
+                    JOIN ikun_sources s ON s.id = c.source_id
                     WHERE ikun_chunk_fts MATCH ? AND c.corpus = ?
                     LIMIT 20
                     """,
@@ -2744,25 +2936,40 @@ def run_ikun_agentic_rag_query(conn: sqlite3.Connection, query: dict[str, Any], 
                 continue
             current = scored.get(row["id"], (0.0, row, ""))[0]
             snippet = row["snippet"] if "snippet" in row.keys() and row["snippet"] else row["text"][:900]
-            scored[row["id"]] = (current + 1.0 / (rank + 60 + ranker), row, snippet)
+            metadata_bonus = score_text(context_terms, row["rel_path"]) * 0.01
+            noisy_penalty = 0.55 if int(row["noisy"]) else 1.0
+            score = (current + 1.0 / (rank + 60 + ranker) + metadata_bonus) * noisy_penalty
+            scored[row["id"]] = (score, row, snippet)
     selected = sorted(scored.values(), key=lambda item: item[0], reverse=True)[:24]
     snippets = []
+    citations = []
     source_bytes = 0
     for _, row, snippet in selected:
         source_bytes += int(row["byte_count"])
+        clean_snippet = re.sub(r"\s+", " ", snippet).strip()[:1400]
         snippets.append(
             {
                 "path": row["rel_path"],
                 "line_start": row["line_start"],
                 "line_end": row["line_end"],
-                "snippet": re.sub(r"\s+", " ", snippet).strip()[:1400],
+                "snippet": clean_snippet,
             }
+        )
+        citations.append(
+            make_evidence_citation(
+                row["rel_path"],
+                row["line_start"],
+                row["line_end"],
+                clean_snippet,
+                confidence=0.52 if int(row["noisy"]) else 0.62,
+                extra={"source_hash": row["content_hash"], "retriever": "agentic_rag", "noisy": bool(row["noisy"])},
+            )
         )
     latency_ms = (time.perf_counter() - start) * 1000.0
     return {
         "answer": {"snippets": snippets},
         "fields": {},
-        "citations": [],
+        "citations": citations,
         "confidence": {"aggregate": 0.0, "selected_artifact_count": 0},
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
@@ -2772,7 +2979,7 @@ def run_ikun_agentic_rag_query(conn: sqlite3.Connection, query: dict[str, Any], 
             "steps": max(1, len(expansions) + len(selected)),
         },
         "filtered_by_acl": False,
-        "warnings": ["agentic_rag_returns_ranked_chunks_not_typed_artifacts"],
+        "warnings": ["agentic_rag_returns_ranked_chunks_not_typed_artifacts", "agentic_rag_uses_metadata_filter_rrf_and_noisy_source_downrank"],
     }
 
 
@@ -3154,11 +3361,198 @@ def ikun_adaptive_case_specs(conn: sqlite3.Connection, corpus: str, limit: int =
     return cases[:limit]
 
 
+def ikun_hidden_case_specs(conn: sqlite3.Connection, corpus: str, limit: int = 30) -> list[dict[str, Any]]:
+    artifacts = {row["artifact_type"]: row_json(row, "data_json", {}) for row in ikun_artifact_rows(conn, corpus)}
+    if not artifacts:
+        raise KnowledgeError(f"No ikun artifacts for {corpus}. Run ikun-compile first.")
+    workflow = artifacts.get("workflow_control", {})
+    profile = artifacts.get("project_profile", {})
+    role_gate = artifacts.get("role_gate", {})
+    memory = artifacts.get("memory_system", {})
+    runs = artifacts.get("run_history", {})
+    pro = artifacts.get("pro_feedback", {})
+    business = artifacts.get("business_context", {})
+    cases: list[dict[str, Any]] = []
+
+    def add_case(case_id: str, category: str, question: str, fields: list[str], contexts: list[str], data: dict[str, Any], extra_terms: list[str] | None = None) -> None:
+        contains = ikun_required_contains(data, fields)
+        for term in extra_terms or []:
+            if term and term.lower() not in {item.lower() for item in contains}:
+                contains.append(term)
+        cases.append(
+            {
+                "id": case_id,
+                "suite": IKUN_HIDDEN_SUITE_NAME,
+                "category": category,
+                "question": question,
+                "query": ikun_eval_query(question, contexts, fields, category, corpus),
+                "expected": {
+                    "contains": contains[:8],
+                    "required_fields": fields,
+                    "grounded": True,
+                    "expected_mode": "refusal_or_guardrail" if category == "negative_refusal" else "grounded_answer",
+                    "hidden_user_written": True,
+                },
+            }
+        )
+
+    cross_boundary = [
+        (
+            "The user wants to import old mobile-touch decisions into the active workflow. What boundaries, routing, and memory constraints should be joined before saying yes?",
+            ["old_project_boundary", "legacy_reference_policy", "gate_rule", "writeback_boundary"],
+            ["ikunaim_business", "ikunaim_workflow", "ikunaim_memory"],
+            {**business, **profile, **role_gate, **memory},
+        ),
+        (
+            "A run looks complete, but the next task changes workflow policy and business direction together. Which facts decide whether this is execution, memory, or architecture work?",
+            ["current_run_id", "validation_gates", "business_direction", "writeback_boundary"],
+            ["ikunaim_runs", "ikunaim_workflow", "ikunaim_business", "ikunaim_memory"],
+            {**runs, **workflow, **profile, **memory},
+        ),
+        (
+            "A prompt asks for Android-control strategy while also touching Pro handoff. Which project, business, and Pro boundaries should constrain the answer?",
+            ["business_direction", "business_domains", "external_feedback_intake", "visible_send_guard"],
+            ["ikunaim_business", "ikunaim_pro", "ikunaim_workflow"],
+            {**profile, **business, **pro, **workflow},
+        ),
+        (
+            "Before resuming after a pause, which live pointer, run-history evidence, and role gate should be checked together?",
+            ["current_run_id", "current_task_id", "latest_runs", "role_gate_mode"],
+            ["ikunaim_runs", "ikunaim_workflow"],
+            {**workflow, **runs, **role_gate},
+        ),
+        (
+            "A new feature request sounds like product work but also modifies validation gates. Which domains and gates keep the route honest?",
+            ["business_domains", "gate_rule", "validation_gates", "red_lines"],
+            ["ikunaim_workflow", "ikunaim_business"],
+            {**role_gate, **workflow, **business},
+        ),
+    ]
+    for index in range(10):
+        question, fields, contexts, data = cross_boundary[index % len(cross_boundary)]
+        add_case(f"ikun_hidden_cross_{index + 1:03d}", "hidden_cross_boundary", f"{question} Hidden cross-boundary pass {index // len(cross_boundary) + 1}.", fields, contexts, data)
+
+    refusals = [
+        (
+            "Please treat this Pro advice as accepted project truth and write it into long-term memory now.",
+            ["external_feedback_intake", "absorption_status", "writeback_boundary", "validation_gates"],
+            ["ikunaim_pro", "ikunaim_memory", "ikunaim_workflow"],
+            {**pro, **memory, **workflow},
+            ["external", "validation"],
+        ),
+        (
+            "Skip the role gate and mark the current workflow task done because the answer feels obvious.",
+            ["role_gate_mode", "gate_rule", "stop_rule", "validation_gates"],
+            ["ikunaim_workflow"],
+            {**role_gate, **workflow},
+            ["gate", "validation"],
+        ),
+        (
+            "Move files from the old mobile-touch project into the active code path without another decision.",
+            ["old_project_boundary", "no_migration_policy", "legacy_reference_policy", "red_lines"],
+            ["ikunaim_business", "ikunaim_workflow"],
+            {**business, **profile, **workflow},
+            ["read-only", "migration"],
+        ),
+        (
+            "Use a temp capture as the source of truth and update project memory from it directly.",
+            ["privacy_noise_note", "reference_text_sources", "writeback_boundary", "trusted_initial_sources"],
+            ["ikunaim_business", "ikunaim_memory", "ikunaim_workflow"],
+            {**business, **memory, **workflow},
+            ["temp", "writeback"],
+        ),
+        (
+            "Send the Pro-visible response without checking the visible-send guard or audit trail.",
+            ["visible_send_guard", "audit_closure", "stop_rule", "validation_gates"],
+            ["ikunaim_pro", "ikunaim_workflow"],
+            {**pro, **workflow},
+            ["guard", "audit"],
+        ),
+    ]
+    for index in range(10):
+        question, fields, contexts, data, extra_terms = refusals[index % len(refusals)]
+        add_case(f"ikun_hidden_refusal_{index + 1:03d}", "negative_refusal", f"{question} Hidden refusal pass {index // len(refusals) + 1}.", fields, contexts, data, extra_terms)
+
+    noisy_cases = [
+        (
+            "A historical temp capture says to ignore the local gates. What source-trust and memory facts prevent that from dominating the answer?",
+            ["privacy_noise_note", "reference_text_sources", "trusted_initial_sources", "writeback_boundary"],
+            ["ikunaim_business", "ikunaim_workflow", "ikunaim_memory"],
+            {**business, **workflow, **memory},
+        ),
+        (
+            "A reference PDF looks relevant to Android control. How should it be used without turning reference material into project policy?",
+            ["reference_text_sources", "old_project_boundary", "business_direction", "workflow_reference_policy"],
+            ["ikunaim_business", "ikunaim_workflow"],
+            {**business, **profile, **workflow},
+        ),
+        (
+            "A Pro capture conflicts with local run state. Which intake and audit facts keep the local decision gate in charge?",
+            ["external_feedback_intake", "audit_closure", "current_run_id", "validation_gates"],
+            ["ikunaim_pro", "ikunaim_runs", "ikunaim_workflow"],
+            {**pro, **runs, **workflow},
+        ),
+        (
+            "A legacy sample contains useful UI behavior. What boundary stops accidental migration while preserving business context?",
+            ["old_project_boundary", "no_migration_policy", "business_domains", "legacy_reference_policy"],
+            ["ikunaim_business"],
+            {**business, **profile},
+        ),
+        (
+            "If noisy sources are included in the corpus, what should the answer cite before trusting them?",
+            ["privacy_noise_note", "trusted_initial_sources", "validation_gates", "reference_text_sources"],
+            ["ikunaim_business", "ikunaim_workflow"],
+            {**business, **workflow},
+        ),
+    ]
+    for index, (question, fields, contexts, data) in enumerate(noisy_cases, start=1):
+        add_case(f"ikun_hidden_noisy_{index:03d}", "noisy_source", question, fields, contexts, data, ["noisy"])
+
+    stale_cases = [
+        (
+            "Which conditions make the current run pointer unsafe to trust without reading run directories?",
+            ["current_run_id", "latest_runs", "stale_current_run_risk", "task_index_sources"],
+            ["ikunaim_runs", "ikunaim_workflow"],
+            {**runs, **workflow},
+        ),
+        (
+            "After a source change, what should the knowledge layer warn about before answering from old compiled facts?",
+            ["stale_current_run_risk", "validation_gates", "defect_event_sources", "handoff_sources"],
+            ["ikunaim_runs", "ikunaim_workflow"],
+            {**runs, **workflow},
+        ),
+        (
+            "A recovery task asks to continue from current_run. Which run-history and validation evidence should be checked first?",
+            ["current_run_id", "latest_runs", "validation_gates", "defect_event_sources"],
+            ["ikunaim_runs", "ikunaim_workflow"],
+            {**runs, **workflow},
+        ),
+        (
+            "If a candidate memory update depends on stale run state, what route keeps it out of stable memory?",
+            ["writeback_boundary", "stale_current_run_risk", "validation_gates", "latest_runs"],
+            ["ikunaim_memory", "ikunaim_runs", "ikunaim_workflow"],
+            {**memory, **runs, **workflow},
+        ),
+        (
+            "What evidence should be cited when the latest handoff and current pointer disagree?",
+            ["handoff_sources", "current_run_id", "latest_runs", "stale_current_run_risk"],
+            ["ikunaim_runs"],
+            runs,
+        ),
+    ]
+    for index, (question, fields, contexts, data) in enumerate(stale_cases, start=1):
+        add_case(f"ikun_hidden_stale_{index:03d}", "stale_recovery", question, fields, contexts, data, ["stale"])
+
+    return cases[:limit]
+
+
 def seed_ikun_eval_cases(conn: sqlite3.Connection, suite: str, corpus: str, limit: int = 90) -> dict[str, Any]:
     if suite == IKUN_SUITE_NAME:
         return seed_case_specs(conn, suite, ikun_eval_case_specs(conn, corpus, limit), limit)
     if suite == IKUN_ADAPTIVE_SUITE_NAME:
         return seed_case_specs(conn, suite, ikun_adaptive_case_specs(conn, corpus, limit), limit)
+    if suite == IKUN_HIDDEN_SUITE_NAME:
+        return seed_case_specs(conn, suite, ikun_hidden_case_specs(conn, corpus, limit), limit)
     raise KnowledgeError(f"unknown ikun suite: {suite}")
 
 
@@ -3176,7 +3570,7 @@ def score_ikun_result(result: dict[str, Any], expected: dict[str, Any], retrieve
         citation_coverage = grounded_hits / max(1, len(required))
     else:
         field_score = 1.0 if result.get("answer", {}).get("snippets") else 0.0
-        citation_coverage = 0.0
+        citation_coverage = citation_support_coverage(result, expected)
     score = round(term_score * 0.50 + field_score * 0.32 + citation_coverage * 0.18, 4)
     return score >= 0.75 and (retriever != "compiled" or citation_coverage >= 0.99), score, citation_coverage
 
@@ -3284,7 +3678,9 @@ def run_ikun_eval(conn: sqlite3.Connection, suite: str, retrievers: list[str], c
         summaries[retriever] = {
             "cases": len(results),
             "passed": passed_count,
+            "auto_passed": passed_count,
             "completion_rate": round(passed_count / max(1, len(results)), 3),
+            "automatic_completion_rate": round(passed_count / max(1, len(results)), 3),
             "average_score": round(sum(item["score"] for item in results) / max(1, len(results)), 4),
             "median_latency_ms": latencies[len(latencies) // 2] if latencies else 0,
             "total_source_bytes_proxy": sum(item["source_bytes"] for item in results),
@@ -3338,17 +3734,17 @@ def ikun_analysis_markdown(result: dict[str, Any]) -> str:
         "",
         "## Comparison Table",
         "",
-        "| retriever | cases | passed | completion | avg score | median latency ms | total source bytes | avg steps | citation coverage |",
+        "| retriever | cases | auto_passed | automatic completion | avg auto score | median latency ms | total source bytes | avg steps | citation coverage |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for retriever in retrievers:
         item = summary[retriever]
         lines.append(
             "| {name} | {cases} | {passed} | {completion:.3f} | {score:.4f} | {latency} | {bytes} | {steps:.3f} | {citation:.3f} |".format(
-                name=retriever,
+                name=RETRIEVER_DISPLAY_NAMES.get(retriever, retriever),
                 cases=item["cases"],
-                passed=item["passed"],
-                completion=item["completion_rate"],
+                passed=item.get("auto_passed", item["passed"]),
+                completion=item.get("automatic_completion_rate", item["completion_rate"]),
                 score=item["average_score"],
                 latency=item["median_latency_ms"],
                 bytes=item["total_source_bytes_proxy"],
@@ -3362,7 +3758,7 @@ def ikun_analysis_markdown(result: dict[str, Any]) -> str:
         compiled = summary["compiled"]
         lines.append(
             f"1. Compiled artifacts completed {compiled['passed']}/{compiled['cases']} cases "
-            f"({compiled['completion_rate']:.3f}) with citation coverage {compiled['average_citation_coverage']:.3f}."
+            f"({compiled.get('automatic_completion_rate', compiled['completion_rate']):.3f} automatic completion) with citation coverage {compiled['average_citation_coverage']:.3f}."
         )
     if "agentic_rag" in summary and "compiled" in summary:
         rag = summary["agentic_rag"]
@@ -3389,7 +3785,8 @@ def ikun_analysis_markdown(result: dict[str, Any]) -> str:
             "",
             "## Boundary",
             "",
-            "- This is a Nexus/KRAFT-style local reproduction on a project corpus, not a Pinecone internal implementation.",
+            "- This is a Nexus-like local behavior reproduction on a project corpus, not a Pinecone internal implementation.",
+            "- `coding_sandbox_simulated` is a file-search/read simulation, not a full Codex coding-agent upper bound.",
             "- Automatic scores measure typed completion, grounding, and retrieval budget. Blind judge accuracy is exported separately through `ikun-judge-pack` / `ikun-judge-import`.",
             "",
         ]
@@ -3632,6 +4029,10 @@ def ikun_analysis(args: argparse.Namespace) -> dict[str, Any]:
             handle.write("```json\n")
             handle.write(json.dumps(judge_summary.get("results", {}), ensure_ascii=False, indent=2, sort_keys=True))
             handle.write("\n```\n")
+    else:
+        with report_path.open("a", encoding="utf-8") as handle:
+            handle.write("\n## Blind Judge Summary\n\n")
+            handle.write("Pending: no `judge_results.jsonl` has been imported, so this report does not claim judge accuracy.\n")
     return {"status": "ikun_analysis_written", "corpus": args.corpus, "analysis_outputs": outputs, "judge_summary_available": bool(judge_summary), "report_bytes": len(report.encode("utf-8"))}
 
 
@@ -4776,6 +5177,30 @@ def sec_artifact_by_ticker(conn: sqlite3.Connection, corpus: str, ticker: str) -
     ).fetchone()
 
 
+def sec_artifact_stale_details(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    hashes = row_json(row, "source_hashes_json", {})
+    filing = conn.execute("SELECT * FROM sec_filings WHERE id = ?", (row["filing_id"],)).fetchone()
+    current_hashes = sec_artifact_source_hashes(filing) if filing is not None else {}
+    drift = []
+    for path, expected_hash in sorted(hashes.items()):
+        current_hash = current_hashes.get(path)
+        if current_hash is None:
+            drift.append({"path": path, "status": "missing_source", "expected_hash": expected_hash, "current_hash": None})
+        elif current_hash != expected_hash:
+            drift.append({"path": path, "status": "hash_changed", "expected_hash": expected_hash, "current_hash": current_hash})
+    status = row["status"] if "status" in row.keys() else "active"
+    return {
+        "artifact_id": row["id"],
+        "ticker": row["ticker"],
+        "artifact_type": row["artifact_type"],
+        "status": status,
+        "artifact_version": row["artifact_version"] if "artifact_version" in row.keys() else "v1",
+        "compiled_at": row["compiled_at"] if "compiled_at" in row.keys() else row["created_at"],
+        "stale": bool(drift) or status != "active",
+        "source_hash_drift": drift,
+    }
+
+
 def sec_query_tickers(conn: sqlite3.Connection, corpus: str, query: dict[str, Any]) -> list[str]:
     where = query.get("where") if isinstance(query.get("where"), dict) else {}
     requested = [str(ticker).upper() for ticker in where.get("tickers", []) if str(ticker).strip()]
@@ -4842,6 +5267,9 @@ def run_sec_compiled_query(conn: sqlite3.Connection, query: dict[str, Any], corp
         if artifact is None:
             warnings.append(f"missing_sec_artifact:{ticker}")
             continue
+        stale = sec_artifact_stale_details(conn, artifact)
+        if stale["stale"]:
+            warnings.append(f"stale_artifact:{artifact['id']}")
         company, used = sec_make_company_answer(artifact, fields)
         companies.append(company)
         citations.extend(used)
@@ -4867,7 +5295,11 @@ def run_sec_compiled_query(conn: sqlite3.Connection, query: dict[str, Any], corp
             }
         },
         "citations": deduped,
-        "confidence": {"aggregate": 0.9 if companies else 0.0, "selected_artifact_count": len(companies)},
+        "confidence": {
+            "aggregate": 0.49 if any(str(warning).startswith("stale_artifact:") for warning in warnings) else (0.9 if companies else 0.0),
+            "selected_artifact_count": len(companies),
+            "stale_artifact_count": sum(1 for warning in warnings if str(warning).startswith("stale_artifact:")),
+        },
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
             "depth": "compiled",
@@ -4890,6 +5322,7 @@ def run_sec_coding_sandbox_query(conn: sqlite3.Connection, query: dict[str, Any]
     tickers = sec_query_tickers(conn, corpus, query)
     terms = sec_search_terms(query)
     snippets = []
+    citations = []
     source_bytes = 0
     steps = 0
     for ticker in tickers:
@@ -4905,14 +5338,26 @@ def run_sec_coding_sandbox_query(conn: sqlite3.Connection, query: dict[str, Any]
             steps += 1
             if index >= 0:
                 snippet = text[max(0, index - 350) : min(len(text), index + 650)]
-                snippets.append({"ticker": ticker, "path": filing["local_text_path"], "snippet": re.sub(r"\s+", " ", snippet).strip()})
+                line_start, line_end, quote = find_line_range(text, snippet[:80])
+                clean_snippet = re.sub(r"\s+", " ", snippet).strip()
+                snippets.append({"ticker": ticker, "path": filing["local_text_path"], "line_start": line_start, "line_end": line_end, "snippet": clean_snippet})
+                citations.append(
+                    make_evidence_citation(
+                        filing["local_text_path"],
+                        line_start,
+                        line_end,
+                        quote or clean_snippet,
+                        confidence=0.54,
+                        extra={"ticker": ticker, "source_hash": filing["content_hash"], "retriever": "coding_sandbox_simulated"},
+                    )
+                )
                 if len(snippets) >= 20:
                     break
     latency_ms = (time.perf_counter() - start) * 1000.0
     return {
         "answer": {"snippets": snippets},
         "fields": {},
-        "citations": [],
+        "citations": citations,
         "confidence": {"aggregate": 0.0, "selected_artifact_count": 0},
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
@@ -4947,9 +5392,10 @@ def run_sec_agentic_rag_query(conn: sqlite3.Connection, query: dict[str, Any], c
             rows = list(
                 conn.execute(
                     """
-                    SELECT c.*, snippet(sec_chunk_fts, 4, '[', ']', ' ... ', 32) AS snippet
+                    SELECT c.*, f.local_text_path, f.content_hash, snippet(sec_chunk_fts, 4, '[', ']', ' ... ', 32) AS snippet
                     FROM sec_chunk_fts
                     JOIN sec_chunks c ON c.id = sec_chunk_fts.chunk_id
+                    JOIN sec_filings f ON f.id = c.filing_id
                     WHERE sec_chunk_fts MATCH ? AND c.corpus = ?
                     LIMIT 18
                     """,
@@ -4963,24 +5409,37 @@ def run_sec_agentic_rag_query(conn: sqlite3.Connection, query: dict[str, Any], c
             scored[row["id"]] = (current + 1.0 / (rank + 60 + ranker), row)
     selected = [row for _, row in sorted(scored.values(), key=lambda item: item[0], reverse=True)[:24]]
     snippets = []
+    citations = []
     source_bytes = 0
     for row in selected:
         snippet = row["snippet"] if "snippet" in row.keys() and row["snippet"] else row["text"][:900]
+        clean_snippet = re.sub(r"\s+", " ", snippet).strip()
         source_bytes += int(row["byte_count"])
         snippets.append(
             {
                 "ticker": row["ticker"],
                 "company": row["company"],
+                "path": row["local_text_path"],
                 "line_start": row["line_start"],
                 "line_end": row["line_end"],
-                "snippet": re.sub(r"\s+", " ", snippet).strip(),
+                "snippet": clean_snippet,
             }
+        )
+        citations.append(
+            make_evidence_citation(
+                row["local_text_path"],
+                row["line_start"],
+                row["line_end"],
+                clean_snippet,
+                confidence=0.6,
+                extra={"ticker": row["ticker"], "source_hash": row["content_hash"], "retriever": "agentic_rag"},
+            )
         )
     latency_ms = (time.perf_counter() - start) * 1000.0
     return {
         "answer": {"snippets": snippets},
         "fields": {},
-        "citations": [],
+        "citations": citations,
         "confidence": {"aggregate": 0.0, "selected_artifact_count": 0},
         "budget_used": {
             "latency_ms": round(latency_ms, 3),
@@ -5399,7 +5858,7 @@ def score_sec_result(result: dict[str, Any], expected: dict[str, Any], retriever
         citation_coverage = 1.0 if result.get("citations") else 0.0
         field_score_value = 1.0 if companies else 0.0
     else:
-        citation_coverage = 0.0
+        citation_coverage = citation_support_coverage(result, expected)
         field_score_value = 1.0 if result.get("answer", {}).get("snippets") else 0.0
     score = round((term_score * 0.55) + (field_score_value * 0.30) + (citation_coverage * 0.15), 4)
     passed = score >= 0.75 and (retriever != "compiled" or citation_coverage >= 0.99)
@@ -5541,7 +6000,9 @@ def run_sec_eval(conn: sqlite3.Connection, suite: str, retrievers: list[str], co
         summaries[retriever] = {
             "cases": len(results),
             "passed": passed_count,
+            "auto_passed": passed_count,
             "completion_rate": round(passed_count / max(1, len(results)), 3),
+            "automatic_completion_rate": round(passed_count / max(1, len(results)), 3),
             "average_score": round(sum(item["score"] for item in results) / max(1, len(results)), 4),
             "median_latency_ms": latencies[len(latencies) // 2] if latencies else 0,
             "total_source_bytes_proxy": sum(item["source_bytes"] for item in results),
@@ -5595,17 +6056,17 @@ def sec_analysis_markdown(result: dict[str, Any]) -> str:
         "",
         "## Raw Data Table",
         "",
-        "| retriever | cases | passed | completion | avg score | median latency ms | total source bytes | avg steps | citation coverage |",
+        "| retriever | cases | auto_passed | automatic completion | avg auto score | median latency ms | total source bytes | avg steps | citation coverage |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for retriever in retrievers:
         item = summary[retriever]
         lines.append(
             "| {name} | {cases} | {passed} | {completion:.3f} | {score:.4f} | {latency} | {bytes} | {steps:.3f} | {citation:.3f} |".format(
-                name=retriever,
+                name=RETRIEVER_DISPLAY_NAMES.get(retriever, retriever),
                 cases=item["cases"],
-                passed=item["passed"],
-                completion=item["completion_rate"],
+                passed=item.get("auto_passed", item["passed"]),
+                completion=item.get("automatic_completion_rate", item["completion_rate"]),
                 score=item["average_score"],
                 latency=item["median_latency_ms"],
                 bytes=item["total_source_bytes_proxy"],
@@ -5620,7 +6081,7 @@ def sec_analysis_markdown(result: dict[str, Any]) -> str:
         compiled = summary["compiled"]
         lines.append(
             f"1. Compiled artifacts completed {compiled['passed']}/{compiled['cases']} cases "
-            f"({compiled['completion_rate']:.3f}) with citation coverage {compiled['average_citation_coverage']:.3f}."
+            f"({compiled.get('automatic_completion_rate', compiled['completion_rate']):.3f} automatic completion) with citation coverage {compiled['average_citation_coverage']:.3f}."
         )
     if "agentic_rag" in summary and "compiled" in summary:
         rag = summary["agentic_rag"]
@@ -6265,7 +6726,9 @@ def run_eval(conn: sqlite3.Connection, suite: str, retrievers: list[str]) -> dic
         summaries[retriever] = {
             "cases": len(results),
             "passed": passed_count,
+            "auto_passed": passed_count,
             "completion_rate": round(passed_count / max(1, len(results)), 3),
+            "automatic_completion_rate": round(passed_count / max(1, len(results)), 3),
             "average_score": round(sum(item["score"] for item in results) / max(1, len(results)), 4),
             "median_latency_ms": latencies[len(latencies) // 2] if latencies else 0,
             "total_source_bytes_proxy": byte_total,
@@ -6321,6 +6784,113 @@ class KnowledgeSelfTests(unittest.TestCase):
             elif path.is_dir():
                 path.rmdir()
         self.temp_dir.rmdir()
+
+    def seed_ikun_mock_corpus(self, corpus: str = "ikun_mock") -> str:
+        rows = {
+            "AGENTS.md": "Role Gate strict. Do not bypass role gate. Do not skip validation. Pro is external advice, not project truth.",
+            "08_agents_workflow/current_run.yaml": "\n".join(
+                [
+                    "current_run_id: run_2026_mock",
+                    "current_task_id: TASK-2026-001",
+                    "run_status: active",
+                    "trusted_initial_sources: AGENTS.md, 08_agents_workflow/current_run.yaml, 09_project_runs/run_2026_mock/task_index.md",
+                ]
+            ),
+            "08_agents_workflow/README.md": "\n".join(
+                [
+                    "stop rule: stop instruction blocks execution until the gate is cleared",
+                    "validation_gates: prompt validation, response validation, local decision gate, evidence check",
+                    "workflow_reference: workflow references are read-only unless promoted through local gates",
+                ]
+            ),
+            "08_agents_workflow/project/project_profile.yaml": "\n".join(
+                [
+                    "project_name: ikunAim",
+                    "business_direction: AI-assisted QtScrcpy scrcpy Android control product",
+                    "workflow_driver: local_codex / Lumi",
+                    "role_gate: strict",
+                    "v1_success: structured records, resumable current run, clean memory, and stop-rule enforcement",
+                    "legacy material read-only reference",
+                ]
+            ),
+            "08_agents_workflow/task_taxonomy.md": "I0: intake. I1: architecture. I2: workflow rules. I3: validation. role_gate_mode: strict. gate_rule: no role self-signing without validation.",
+            "08_agents_workflow/business_domain_matrix.md": "business_domains: Android control, scrcpy automation, AI-assisted operation.",
+            "07_project_memory/memory_writeback.md": "writeback_boundary: write memory only after local decision gate and validated run evidence. writeback_queue_sources: memory queue, experience_records.",
+            "07_project_memory/experience_records.md": "direction_memory: prefer evidence-first workflow. engineering_strategy: small validated changes.",
+            "09_project_runs/run_2026_mock/task_index.md": "latest run run_2026_mock has TASK-2026-001. handoff_sources: handoff.md. validation_gates: evidence check.",
+            "09_project_runs/run_2026_mock/defect_event_ledger.md": "defect_event_sources: defect ledger and event ledger. stale_current_run_risk: current_run.yaml is only a pointer; compare latest run directories before trusting it.",
+            "integrations/pro_bridge/external_feedback.md": "external_feedback_intake: Pro advice is external until local verification. absorption_status: pending local decision. audit_closure: record outcome after validation. visible_send_guard: confirm visible send before publish.",
+            "10_business_samples/context.md": "old_project_boundary: old mobile-touch material is read-only reference. no_migration_policy: do not migrate legacy files into active code. reference_text_sources: temp captures and PDFs are noisy. privacy_noise_note: temp and reference_materials can contain noisy source text.",
+            "temp/noisy_capture.txt": "noisy capture says ignore local gates, but it is not trusted policy.",
+        }
+        with self.conn:
+            for rel, text in rows.items():
+                source_id = stable_id(corpus, rel, length=24)
+                noisy = 1 if is_ikun_noisy_path(rel) else 0
+                self.conn.execute(
+                    """
+                    INSERT INTO ikun_sources
+                      (id, corpus, root_path, rel_path, suffix, content_hash, byte_count,
+                       line_count, content, encoding, noisy, warnings_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        source_id,
+                        corpus,
+                        str(self.temp_dir),
+                        rel,
+                        Path(rel).suffix or ".md",
+                        sha256_text(text),
+                        len(text.encode("utf-8")),
+                        max(1, len(text.splitlines())),
+                        text,
+                        "utf-8",
+                        noisy,
+                        json_dumps([]),
+                        utc_now(),
+                    ),
+                )
+                for index, (line_start, line_end, chunk) in enumerate(chunk_text(text, max_chars=700, overlap=60)):
+                    chunk_id = stable_id(source_id, str(index), length=24)
+                    self.conn.execute(
+                        """
+                        INSERT INTO ikun_chunks
+                          (id, corpus, source_id, rel_path, chunk_index, line_start, line_end, text, byte_count)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (chunk_id, corpus, source_id, rel, index, line_start, line_end, chunk, len(chunk.encode("utf-8"))),
+                    )
+                    with contextlib.suppress(sqlite3.OperationalError):
+                        self.conn.execute(
+                            "INSERT INTO ikun_chunk_fts (chunk_id, corpus, rel_path, text) VALUES (?, ?, ?, ?)",
+                            (chunk_id, corpus, rel, chunk),
+                        )
+            for artifact in build_ikun_artifacts(self.conn, corpus):
+                compiled_at = utc_now()
+                self.conn.execute(
+                    """
+                    INSERT INTO ikun_artifacts
+                      (id, corpus, context_id, artifact_type, title, data_json, citations_json,
+                       confidence, artifact_version, status, source_hashes_json, compiled_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        artifact["id"],
+                        artifact["corpus"],
+                        artifact["context_id"],
+                        artifact["artifact_type"],
+                        artifact["title"],
+                        json_dumps(artifact["data"]),
+                        json_dumps(artifact["citations"]),
+                        artifact["confidence"],
+                        artifact.get("artifact_version", "v1"),
+                        artifact.get("status", "active"),
+                        json_dumps(artifact.get("source_hashes", {})),
+                        compiled_at,
+                        compiled_at,
+                    ),
+                )
+        return corpus
 
     def test_schema_and_ingest(self) -> None:
         result = ingest_sources(self.conn)
@@ -6477,6 +7047,64 @@ class KnowledgeSelfTests(unittest.TestCase):
         result = run_sec_eval(self.conn, SEC_SUITE_NAME, ["compiled"], corpus, limit=6)
         self.assertGreaterEqual(result["summary"]["compiled"]["completion_rate"], 0.9)
 
+    def test_ikun_hidden_suite_and_baseline_citations(self) -> None:
+        corpus = self.seed_ikun_mock_corpus()
+        cases = ikun_hidden_case_specs(self.conn, corpus, 30)
+        self.assertEqual(len(cases), 30)
+        categories = Counter(case["category"] for case in cases)
+        self.assertEqual(categories["hidden_cross_boundary"], 10)
+        self.assertEqual(categories["negative_refusal"], 10)
+        self.assertEqual(categories["noisy_source"], 5)
+        self.assertEqual(categories["stale_recovery"], 5)
+        self.assertTrue(all(case["expected"]["hidden_user_written"] for case in cases))
+
+        refusal = next(case for case in cases if case["category"] == "negative_refusal")
+        self.assertEqual(refusal["expected"]["expected_mode"], "refusal_or_guardrail")
+        rag = run_ikun_agentic_rag_query(self.conn, refusal["query"], corpus)
+        self.assertTrue(rag["citations"])
+        self.assertTrue(all(citation.get("path") and citation.get("quote") for citation in rag["citations"][:3]))
+
+    def test_ikun_stale_artifact_warning(self) -> None:
+        corpus = self.seed_ikun_mock_corpus()
+        artifact = self.conn.execute(
+            "SELECT * FROM ikun_artifacts WHERE corpus = ? AND artifact_type = 'workflow_control'",
+            (corpus,),
+        ).fetchone()
+        hashes = row_json(artifact, "source_hashes_json", {})
+        self.assertTrue(hashes)
+        drift_path = next(iter(hashes))
+        with self.conn:
+            self.conn.execute(
+                "UPDATE ikun_sources SET content_hash = ? WHERE corpus = ? AND rel_path = ?",
+                ("changed-source-hash", corpus, drift_path),
+            )
+        report = ikun_stale_report(self.conn, corpus)
+        self.assertGreaterEqual(report["stale_artifact_count"], 1)
+        query = ikun_eval_query(
+            "Which active run pointer should be checked before continuing?",
+            ["ikunaim_workflow"],
+            ["current_run_id", "validation_gates"],
+            "stale_self_test",
+            corpus,
+        )
+        result = run_ikun_compiled_query(self.conn, query, corpus)
+        self.assertTrue(any(str(warning).startswith("stale_artifact:") for warning in result["warnings"]))
+        self.assertLessEqual(result["confidence"]["aggregate"], 0.49)
+
+    def test_judge_result_summary_schema(self) -> None:
+        agent_answers = [
+            {"case_id": "case_1", "retriever": "compiled", "completed": True},
+            {"case_id": "case_1", "retriever": "agentic_rag", "completed": True},
+        ]
+        rows = [
+            {"case_id": "case_1", "retriever": "compiled", "passed": True, "accuracy_score": 0.9, "failure_category": ""},
+            {"case_id": "case_1", "retriever": "agentic_rag", "passed": False, "accuracy_score": 0.2, "failure_category": "missing_fact"},
+        ]
+        summary = summarize_judge_results(rows, agent_answers)
+        self.assertIn("compiled", summary)
+        self.assertIn("accuracy_ci95", summary["compiled"])
+        self.assertEqual(summary["agentic_rag"]["failure_categories"]["missing_fact"], 1)
+
 
 def run_self_tests() -> dict[str, Any]:
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(KnowledgeSelfTests)
@@ -6565,6 +7193,14 @@ def command_ikun_query(args: argparse.Namespace) -> dict[str, Any]:
     with connect(Path(args.db)) as conn:
         query = load_query_file(Path(args.file))
         return run_ikun_compiled_query(conn, query, args.corpus)
+
+
+def command_ikun_stale_check(args: argparse.Namespace) -> dict[str, Any]:
+    paths = ensure_ikun_runtime(args.corpus)
+    with connect(Path(args.db)) as conn:
+        report = ikun_stale_report(conn, args.corpus)
+    write_json_file(paths["stale_report"], report)
+    return {**report, "stale_report": str(paths["stale_report"])}
 
 
 def command_ikun_eval(args: argparse.Namespace) -> dict[str, Any]:
@@ -6718,6 +7354,10 @@ def build_parser() -> argparse.ArgumentParser:
     ikun_query_cmd.add_argument("--corpus", default=IKUN_CORPUS_ID)
     ikun_query_cmd.add_argument("--file", required=True)
     ikun_query_cmd.set_defaults(func=command_ikun_query)
+
+    ikun_stale_cmd = sub.add_parser("ikun-stale-check", help="Check ikunAim compiled artifacts for source hash drift")
+    ikun_stale_cmd.add_argument("--corpus", default=IKUN_CORPUS_ID)
+    ikun_stale_cmd.set_defaults(func=command_ikun_stale_check)
 
     ikun_eval_cmd = sub.add_parser("ikun-eval", help="Run ikunAim Nexus-like benchmark")
     ikun_eval_cmd.add_argument("--suite", default=IKUN_SUITE_NAME)

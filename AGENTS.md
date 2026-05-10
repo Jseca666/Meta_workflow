@@ -12,6 +12,7 @@ Meta_workflow is a meta workflow engine for guiding arbitrary projects through b
 2. `docs/architecture/vision.md` for product direction and engine shape.
 3. `docs/methodology/map_methodology.md` for the MAP paper methodology used by this project.
 4. `integrations/pro_bridge/README.md` before any Pro/external expert work.
+5. `integrations/knowledge/README.md` before using the local Knowledge Engine or compiled context packets.
 
 ## Routing
 
@@ -19,6 +20,7 @@ Meta_workflow is a meta workflow engine for guiding arbitrary projects through b
 - First architecture review with Pro: use `docs/pro_handoffs/first_architecture_review.md`.
 - Methodology questions about the paper: use `docs/methodology/map_methodology.md` and `references/papers/s41467-025-63804-5.pdf`.
 - Architecture planning: update docs under `docs/architecture/`.
+- Project knowledge compilation, KnowQL-like queries, context packets, and stale checks: use `integrations/knowledge/` and `docs/architecture/knowledge_engine.md`.
 - Runtime state, captures, local configs, and local registries stay out of Git.
 
 ## Hard Boundaries
@@ -28,6 +30,7 @@ Meta_workflow is a meta workflow engine for guiding arbitrary projects through b
 - Do not commit `*.local.json`, `*.local.yaml`, runtime registries, browser locks, raw Pro responses, profile ids, nonces, conversation ids, cookies, or tokens.
 - Do not skip prompt validation, response validation, external feedback intake, or local decision gates.
 - Do not mix Meta_workflow Pro session state with historical state from other projects.
+- Do not treat compiled Knowledge Engine artifacts as project truth when citations are missing, ACL/policy warnings are present, or `stale_artifact:*` warnings are returned.
 
 ## Decision Placement
 
@@ -35,6 +38,7 @@ Meta_workflow is a meta workflow engine for guiding arbitrary projects through b
 - Put research/methodology interpretation in `docs/methodology/`.
 - Put Pro review briefs and outcomes in `docs/pro_handoffs/` or Pro Bridge runtime/intake files as appropriate.
 - Put executable Pro integration behavior in `integrations/pro_bridge/`.
+- Put executable Knowledge Engine behavior in `integrations/knowledge/` and stable knowledge-engine architecture in `docs/architecture/knowledge_engine.md`.
 - Keep `AGENTS.md` as an index and boundary document only.
 
 ## Local Work Loop

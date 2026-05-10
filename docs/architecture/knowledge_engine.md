@@ -18,8 +18,8 @@ center on these behaviors:
 - Enforce access-control and deterministic predicates at the query surface.
 - Let agents declare intent, filters, grounding, shape, confidence, and budget
   through KnowQL-like primitives.
-- Evaluate the result against end-to-end task accuracy, latency, token use, and
-  completion rate rather than retrieval recall alone.
+- Evaluate the result against completion, judged accuracy, latency, token use,
+  and step count rather than retrieval recall alone.
 
 ## Local Product Goal
 
@@ -36,7 +36,8 @@ Source -> Artifact -> Context -> Knowledge
 ```
 
 - `Source`: a tracked repository document with content hash and line anchors.
-- `Artifact`: a typed, versioned fact object built for a task or workflow.
+- `Artifact`: a typed, versioned fact object built for a task or workflow, with
+  source hashes, status, and compile timestamp.
 - `Context`: a governed set of artifacts for a role or workflow.
 - `Knowledge`: the complete set of contexts available to a query.
 
@@ -120,6 +121,10 @@ The SEC path adds:
 - `sec-eval`: compares `coding_sandbox`, `agentic_rag`, and `compiled`.
 - `sec-judge-pack`: exports JSONL for Codex/LLM human-in-the-loop judging.
 
+`coding_sandbox` is retained as a CLI-compatible id, but reports display it as
+`coding_sandbox_simulated` because it is a file search/read simulation, not a
+full Codex coding-agent upper bound.
+
 Runtime corpus files live under `integrations/knowledge/runtime/sec_10k_2022/`
 and remain ignored by Git. Downloading requires
 `integrations/knowledge/config/sec_10k_2022.local.json` with a real SEC
@@ -154,6 +159,8 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-query --corpus ikunaim_full --file integrations/knowledge/examples/ikunaim_workflow.query.json
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_90 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_adaptive_40 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 40
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_hidden_30 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 30
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-stale-check --corpus ikunaim_full
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-agent-pack --suite ikunaim_90 --corpus ikunaim_full --retriever coding_sandbox,agentic_rag,compiled --composer codex
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-judge-pack --suite ikunaim_90 --corpus ikunaim_full --blind --judge codex
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-analysis --suite ikunaim_90 --corpus ikunaim_full
@@ -184,6 +191,16 @@ proxy, lower step count, and fast local latency.
 The narrower `ikunaim_adaptive_40` suite focuses on original workflow adaptation
 prompts: vague user intake routing, role/domain selection, failure recovery,
 Pro-feedback absorption, and memory/boundary decisions.
+
+The `ikunaim_hidden_30` suite adds Pro-review hardening coverage: 10
+cross-boundary hidden prompts, 10 negative/refusal prompts, 5 noisy-source
+prompts, and 5 stale/recovery prompts. It is still a typed KnowQL evaluation,
+not a free-form chat accuracy benchmark.
+
+Compiled ikunAim artifacts now record `artifact_version`, `status`,
+`source_hashes_json`, and `compiled_at`. Query-time compiled responses warn with
+`stale_artifact:<id>` and reduce aggregate confidence if a recorded source hash
+no longer matches the current source manifest.
 
 ### Public KRAFTBench-like Path
 
@@ -216,8 +233,8 @@ This path intentionally separates:
 - `judge_pack.blind.jsonl`, `judge_answer_key.json`, and `judge_results.jsonl`:
   blinded Codex judge workflow.
 - `kraft_comparison_report.md` and `official_delta_table.json`: completion,
-  accuracy, latency, token_proxy, and steps compared with Pinecone's public
-  table.
+  judge accuracy when imported, latency, token_proxy, and steps compared with
+  Pinecone's public table.
 
 ## Boundaries
 

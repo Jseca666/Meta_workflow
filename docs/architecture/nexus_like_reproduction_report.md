@@ -1,8 +1,8 @@
 # Nexus-like Knowledge Compiler Reproduction Report
 
-This report records the local reproduction work after implementing the
-Meta_workflow knowledge compiler. It is a public-behavior reproduction of the
-Nexus/KRAFTBench style, not Pinecone Nexus internals and not Pinecone private
+This report records the local behavior-reproduction work after implementing the
+Meta_workflow knowledge compiler. It is a Nexus-like / KRAFTBench-style
+public-behavior prototype, not Pinecone Nexus internals and not Pinecone private
 benchmark data.
 
 For Pro review, use `docs/pro_handoffs/nexus_like_reproduction_review.md`.
@@ -18,7 +18,7 @@ The reproduced behavior is:
 - query-time declarative requests with `ask`, `contexts`, `where`, `shape`,
   `ground`, `confidence`, and `budget`;
 - typed answers with field-level citations and confidence;
-- comparison against raw file-search and chunk/RAG baselines;
+- comparison against simulated raw file-search and chunk/RAG baselines;
 - budget reporting with latency, steps, and source-byte proxy.
 
 The implementation is local and deterministic at runtime. It uses Python
@@ -119,9 +119,9 @@ Corpus:
 - 259.897 MiB normalized text
 - suite: `sec_10k_150`
 
-| retriever | passed | completion | median latency ms | source-byte proxy | avg steps | citation coverage |
+| retriever | auto_passed | automatic completion | median latency ms | source-byte proxy | avg steps | citation coverage |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `coding_sandbox` | 78/150 | 0.520 | 6.750 | 86,308,997 | 17.900 | 0.000 |
+| `coding_sandbox_simulated` | 78/150 | 0.520 | 6.750 | 86,308,997 | 17.900 | 0.000 |
 | `agentic_rag` | 23/150 | 0.153 | 15.429 | 12,995,235 | 26.880 | 0.000 |
 | `compiled` | 150/150 | 1.000 | 3.746 | 325,304 | 1.000 | 1.000 |
 
@@ -141,13 +141,13 @@ Corpus:
 - 264 noisy sources from `temp/`, `reference_materials/`, and Pro captures
 - suite: `ikunaim_90`
 
-| retriever | passed | completion | median latency ms | source-byte proxy | avg steps | citation coverage |
+| retriever | auto_passed | automatic completion | median latency ms | source-byte proxy | avg steps | citation coverage |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `coding_sandbox` | 32/90 | 0.356 | 53.849 | 17,722,034 | 23.122 | 0.000 |
-| `agentic_rag` | 16/90 | 0.178 | 2.966 | 4,452,709 | 22.000 | 0.000 |
-| `compiled` | 90/90 | 1.000 | 1.317 | 134,622 | 1.000 | 1.000 |
+| `coding_sandbox_simulated` | 59/90 | 0.656 | 66.069 | 17,722,034 | 23.122 | 1.000 |
+| `agentic_rag` | 49/90 | 0.544 | 4.289 | 4,330,960 | 22.556 | 1.000 |
+| `compiled` | 90/90 | 1.000 | 2.501 | 134,622 | 1.000 | 1.000 |
 
-Compiled source-byte reduction versus agentic RAG: `33.076x`.
+Compiled source-byte reduction versus agentic RAG: `32.171x`.
 
 Covered prompt classes:
 
@@ -172,13 +172,42 @@ Suite: `ikunaim_adaptive_40`
 | adaptive Pro absorption | 6 |
 | adaptive memory and boundary | 6 |
 
-| retriever | passed | completion | median latency ms | source-byte proxy | avg steps | citation coverage |
+| retriever | auto_passed | automatic completion | median latency ms | source-byte proxy | avg steps | citation coverage |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `coding_sandbox` | 2/40 | 0.050 | 66.961 | 10,467,786 | 22.600 | 0.000 |
-| `agentic_rag` | 8/40 | 0.200 | 3.001 | 2,004,184 | 22.350 | 0.000 |
-| `compiled` | 40/40 | 1.000 | 1.358 | 91,158 | 1.000 | 1.000 |
+| `coding_sandbox_simulated` | 24/40 | 0.600 | 80.085 | 10,467,786 | 22.600 | 1.000 |
+| `agentic_rag` | 26/40 | 0.650 | 6.622 | 2,072,014 | 24.150 | 1.000 |
+| `compiled` | 40/40 | 1.000 | 2.835 | 91,158 | 1.000 | 1.000 |
 
-Compiled source-byte reduction versus agentic RAG: `21.986x`.
+Compiled source-byte reduction versus agentic RAG: `22.730x`.
+
+### ikunAim Hidden/Adversarial Suite
+
+This suite was added after Pro feedback to reduce artifact-schema overfitting.
+Questions are hand-written natural-language prompts rather than direct variants
+of artifact field names. The suite still uses a KnowQL `shape`, so these are
+hidden user-written typed-query tests, not unconstrained chat accuracy tests.
+
+Suite: `ikunaim_hidden_30`
+
+| category | cases |
+| --- | ---: |
+| hidden cross-boundary | 10 |
+| negative/refusal | 10 |
+| noisy source | 5 |
+| stale/recovery | 5 |
+
+| retriever | auto_passed | automatic completion | median latency ms | source-byte proxy | avg steps | citation coverage |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `coding_sandbox_simulated` | 14/30 | 0.467 | 84.430 | 8,557,384 | 23.167 | 1.000 |
+| `agentic_rag` | 16/30 | 0.533 | 5.691 | 1,573,290 | 23.967 | 1.000 |
+| `compiled` | 30/30 | 1.000 | 2.634 | 66,082 | 1.000 | 1.000 |
+
+Compiled source-byte reduction versus agentic RAG: `23.808x`.
+
+Failure categories for the two baselines concentrate on wrong run/task joins,
+noisy temp capture, and ambiguous business boundaries. The current automatic
+metric still does not prove judged factual accuracy; a blind judge pack was
+exported and awaits imported `judge_results.jsonl`.
 
 ## Why The Compiled Path Wins
 
@@ -194,9 +223,9 @@ are not simple semantic lookup. They require joining several policy facts:
 - memory writeback eligibility;
 - noisy source and legacy-project boundaries.
 
-Raw file search and RAG retrieve snippets at query time. They often find relevant
-nearby text but miss one or more required policy fields, or retrieve noisy
-captures from `temp/` and historical runs.
+Simulated raw file search and the current local RAG baseline retrieve snippets
+at query time. They often find relevant nearby text but miss one or more required
+policy fields, or retrieve noisy captures from `temp/` and historical runs.
 
 The compiled path converts those scattered facts into typed artifacts before the
 query. Query time is then mostly:
@@ -230,7 +259,7 @@ Query-time savings:
 
 For the `ikunAim` corpus, the build/import/compile path is second-scale on the
 local machine. The query median for compiled artifacts is approximately
-`1.3 ms`.
+`2-4 ms` across the rerun suites.
 
 The real engineering cost is schema quality. A poor artifact schema can freeze
 the wrong abstraction. A good artifact schema turns repeated multi-hop reasoning
@@ -240,11 +269,22 @@ into a small lookup.
 
 These results are automatic metrics, not final human or LLM-judge accuracy.
 
+Evidence tiers:
+
+| tier | purpose | current status |
+| --- | --- | --- |
+| artifact-aligned | validate artifact schema coverage on intended tasks | covered by `meta_workflow_30`, `sec_10k_150`, `ikunaim_90`, `ikunaim_adaptive_40` |
+| hidden user-written | test natural-language prompts not generated from artifact field names | covered by `ikunaim_hidden_30` |
+| source-grounded adversarial | require answers from source facts outside current artifact schema | planned |
+| drift/stale | verify source hash drift and stale warnings | minimal `ikun-stale-check` implemented; mutation regression covered in self-test |
+
 Current rigor level:
 
 - deterministic corpus import;
-- source hashes;
+- source hashes and artifact source-hash manifests;
+- artifact stale warnings for source hash drift;
 - field-level citations;
+- baseline snippet citations for simulated file search and RAG;
 - held runtime outputs;
 - three-path comparison;
 - failure categories;
@@ -253,9 +293,9 @@ Current rigor level:
 Pending for stronger claims:
 
 - import independent judge results from `judge_results.jsonl`;
-- add user-written hidden tasks that are not generated from artifacts;
-- add source-change/stale-artifact regression tests on the external corpus;
-- add more adversarial prompts that require refusing unsafe route changes;
+- add source-grounded adversarial tasks outside the current artifact schema;
+- strengthen citation-support judging beyond citation presence;
+- implement staging overlay and context eval before promotion;
 - add incremental compilation instead of full recompile.
 
 ## Reproduction Commands
@@ -273,6 +313,8 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-compile --corpus ikunaim_full
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_90 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 90
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_adaptive_40 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 40
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-eval --suite ikunaim_hidden_30 --corpus ikunaim_full --compare coding_sandbox,agentic_rag,compiled --limit 30
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-stale-check --corpus ikunaim_full
 ```
 
 Generate judge packs:
@@ -280,6 +322,8 @@ Generate judge packs:
 ```powershell
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-agent-pack --suite ikunaim_90 --corpus ikunaim_full --retriever coding_sandbox,agentic_rag,compiled --composer codex
 C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-judge-pack --suite ikunaim_90 --corpus ikunaim_full --blind --judge codex
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-agent-pack --suite ikunaim_hidden_30 --corpus ikunaim_full --retriever coding_sandbox,agentic_rag,compiled --composer codex --limit 30
+C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py ikun-judge-pack --suite ikunaim_hidden_30 --corpus ikunaim_full --blind --judge codex --limit 30
 ```
 
 SEC HF mirror:
@@ -294,10 +338,11 @@ C:\Users\dzw\anaconda3\python.exe integrations/knowledge/tools/knowledge.py sec-
 
 Supported:
 
-- Build-time compiled artifacts dramatically reduce query-time source-byte proxy
-  on repeated, structured knowledge tasks.
+- Build-time compiled artifacts reduce query-time source-byte proxy on repeated,
+  structured knowledge tasks in these local suites.
 - Typed artifacts produce complete, cited JSON outputs more reliably than raw
-  file search or chunk RAG on the tested corpora.
+  file-search simulation or the current local chunk-RAG baseline on the tested
+  corpora.
 - The effect is especially strong for workflow-adaptation prompts where the
   answer depends on policy joins rather than one nearby snippet.
 
