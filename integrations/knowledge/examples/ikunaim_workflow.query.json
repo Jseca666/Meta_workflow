@@ -1,0 +1,47 @@
+{
+  "ask": "What is the current ikunAim workflow state, and which role-gate and validation rules should be consulted before resuming work?",
+  "contexts": [
+    "ikunaim_workflow",
+    "ikunaim_runs",
+    "ikunaim_memory"
+  ],
+  "where": {
+    "principal_tags": [
+      "public"
+    ]
+  },
+  "ground": true,
+  "shape": {
+    "type": "object",
+    "properties": {
+      "current_run_id": {
+        "type": "string"
+      },
+      "current_task_id": {
+        "type": "string"
+      },
+      "run_status": {
+        "type": "string"
+      },
+      "mandatory_loop": {
+        "type": "array"
+      },
+      "validation_gates": {
+        "type": "array"
+      },
+      "role_gate_mode": {
+        "type": "string"
+      },
+      "writeback_boundary": {
+        "type": "string"
+      }
+    }
+  },
+  "confidence": {
+    "min": 0.6
+  },
+  "budget": {
+    "depth": "standard",
+    "latency_ms": 1000
+  }
+}

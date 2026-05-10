@@ -1,0 +1,22 @@
+{
+  "ask": "What are the hard boundaries for Pro advice and runtime state in Meta_workflow?",
+  "contexts": ["meta_project", "governance", "pro_bridge"],
+  "where": {
+    "principal_tags": ["public"]
+  },
+  "ground": true,
+  "shape": {
+    "type": "object",
+    "properties": {
+      "hard_boundaries": { "type": "array" },
+      "runtime_exclusions": { "type": "array" },
+      "external_advice_policy": { "type": "string" }
+    }
+  },
+  "confidence": { "min": 0.7 },
+  "budget": {
+    "depth": "standard",
+    "latency_ms": 1000,
+    "max_artifacts": 6
+  }
+}

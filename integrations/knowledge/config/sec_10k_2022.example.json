@@ -1,0 +1,15 @@
+{
+  "sec_user_agent": "Meta_workflow research contact@example.com",
+  "request_rate_per_second": 5,
+  "year": 2022,
+  "max_filings": 493,
+  "target_normalized_mb": 250,
+  "ticker_source": "sec_company_tickers_order",
+  "tickers": [],
+  "notes": [
+    "Copy this file to sec_10k_2022.local.json before running sec-download.",
+    "Replace sec_user_agent with a descriptive app/contact string.",
+    "SEC guidance requires automated tools to declare a User-Agent.",
+    "Runtime corpus files stay under integrations/knowledge/runtime/sec_10k_2022/ and are ignored by Git."
+  ]
+}

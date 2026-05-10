@@ -1,6 +1,9 @@
 tmp/
 temp/
 
+__pycache__/
+*.pyc
+
 *.local.json
 *.local.yaml
 *.local.yml
@@ -13,6 +16,14 @@ integrations/pro_bridge/runtime/registries/*.jsonl
 integrations/pro_bridge/runtime/**/*.json
 integrations/pro_bridge/runtime/**/*.md
 integrations/pro_bridge/runtime/**/*.log
+
+integrations/knowledge/runtime/*
+!integrations/knowledge/runtime/.gitkeep
+integrations/knowledge/runtime/**/*.sqlite3
+integrations/knowledge/runtime/**/*.db
+integrations/knowledge/runtime/**/*.json
+integrations/knowledge/runtime/**/*.jsonl
+integrations/knowledge/runtime/**/*.log
 
 **/BROWSER_WINDOW_LOCK.json
 **/PROJECT_SESSION_STATUS.json
